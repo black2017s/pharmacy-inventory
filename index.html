@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام إدارة المخزون الصيدلي</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap');
+
+        body {
+            font-family: 'Cairo', sans-serif;
+            background-color: #f3f4f6;
+        }
+
+        /* Style for the responsive table on small screens */
+        @media (max-width: 640px) {
+            .responsive-table tr {
+                display: grid;
+                /* تغيير عدد الأعمدة لتقليل التمرير الأفقي */
+                grid-template-columns: repeat(2, 1fr);
+                gap: 0.5rem;
+                padding: 1rem 0;
+                border-bottom: 1px solid #e5e7eb;
+            }
+
+            .responsive-table thead {
+                display: none;
+            }
+
+            .responsive-table td {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                font-size: 0.9rem;
+            }
+
+            .responsive-table td::before {
+                content: attr(data-label) ": ";
+                font-weight: 600;
+                color: #4b5563;
+                margin-left: 0.5rem;
+            }
+
+            .responsive-table td[data-label="الإجراءات"] {
+                display: block;
+                justify-content: center;
+                text-align: center;
+                grid-column: 1 / -1;
+            }
+
+            .responsive-table td[data-label="الإجراءات"] div {
+                justify-content: center;
+            }
+        }
+    </style>
+
+    <script type="module">
+        // ** Firebase Imports **
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, updateDoc, doc, deleteDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
+
+        // ----------------------------------------------------
+        // ⚠️ الإعدادات الخاصة بـ Firebase - يجب تغييرها ⚠️
+        // ----------------------------------------------------
+        const firebaseConfig = {
+
+        apiKey: "AIzaSyA4BNXa8M324RgB3PN-EsbS8qEE2Grapfo",
+
+        authDomain: "pharmacy-inventory-24e09.firebaseapp.com",
+
+        projectId: "pharmacy-inventory-24e09",
+
+        storageBucket: "pharmacy-inventory-24e09.firebasestorage.app",
+
+        messagingSenderId: "274983528396",
+
+        appId: "1:274983528396:web:1573e6d3600a0f20641f69",
+
+        measurementId: "G-PT6B0BXC4H"
+
+        };
+
+
+        // --- Firebase Initialization ---
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        let userId = null;
+        let unsubscribeFromFirestore = null; // لتخزين دالة إلغاء الاشتراك
+
+        // --- Global State ---
+        let inventory = [];
+        // الترتيب الأبجدي الافتراضي: حسب الاسم (name) تصاعدياً (asc)
+        let currentSort = { column: 'name', direction: 'asc' }; 
+        let currentFilter = { query: '', category: 'الكل' };
+        let currentItem = null; // للعنصر الحالي الذي يتم تعديله أو جرده
+
+        const inventoryCategories = [
+            "ادوية الاقراص", "اللبوس", "الفوار", "التجميل",
+            "رفايع الكوزمز", "الحقن", "المضاد الحيوي", "ادوية الشرب",
+            "الكريمات والمراهم", "القطرات", "الفيتامينات"
+        ];
+        
+        // --- Firestore Helpers ---
+
+        // دالة مساعدة لبناء المسار (Collection Path)
+        const getInventoryCollectionRef = () => {
+            const appId = firebaseConfig.appId || 'default-inventory'; 
+            // المسار الموصى به لضمان عزل البيانات عبر قواعد الأمان: artifacts/APP_ID/users/USER_ID/inventory
+            return collection(db, `artifacts/${appId}/users/${userId}/inventory`);
+        };
+
+        // --- Utility Functions ---
+
+        const formatNumber = (num) => new Intl.NumberFormat('ar-EG').format(num);
+
+        const classNames = (...classes) => classes.filter(Boolean).join(' ');
+
+        const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = '', min = null, step = null) => {
+            const minAttr = min !== null ? `min="${min}"` : '';
+            const stepAttr = step !== null ? `step="${step}"` : '';
+            const inputType = type === 'date' && !value ? 'text' : type; // Fix date placeholder issue
+
+            return `
+                <div class="${classes}">
+                    <label for="${id}" class="block text-sm font-medium text-gray-700 mb-1">${label}</label>
+                    <div class="relative rounded-md shadow-sm">
+                        <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
+                            <i data-lucide="${icon}" class="w-5 h-5"></i>
+                        </div>
+                        <input
+                            type="${inputType}"
+                            name="${id}"
+                            id="${id}"
+                            value="${value}"
+                            ${minAttr}
+                            ${stepAttr}
+                            placeholder="${label}"
+                            onfocus="${type === 'date' ? `this.type='date'` : ''}"
+                            onblur="${type === 'date' ? `if(!this.value) this.type='text'` : ''}"
+                            class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2 text-right focus:border-blue-500 focus:ring-blue-500 text-sm"
+                            dir="rtl"
+                        >
+                    </div>
+                </div>
+            `;
+        };
+        
+        const closeModal = (modalId) => {
+            document.getElementById(modalId)?.remove();
+            // يجب إعادة إنشاء أيقونات Lucide بعد إغلاق أي نافذة
+            if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+        };
+
+        const openModal = (modalHtml) => {
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+        };
+
+        // --- Firebase Auth & Listener Functions ---
+
+        const authenticateAndStart = () => {
+            document.getElementById('loading-state').style.display = 'flex';
+            
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    userId = user.uid;
+                    setupRealtimeListener(); 
+                } else {
+                    signInAnonymously(auth).catch(error => {
+                        console.error("Authentication failed:", error);
+                        // Display auth error
+                        document.getElementById('data-error-message').innerHTML = `
+                            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4 flex items-center" role="alert">
+                                <i data-lucide="alert-triangle" class="w-5 h-5 ml-2"></i>
+                                <span>فشل المصادقة: ${error.message} (تحقق من إعدادات Firebase).</span>
+                            </div>
+                        `;
+                        document.getElementById('loading-state').style.display = 'none';
+                        if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+                    });
+                }
+            });
+        };
+
+        const setupRealtimeListener = () => {
+            if (unsubscribeFromFirestore) {
+                unsubscribeFromFirestore(); // إلغاء الاشتراك القديم إذا كان موجوداً
+            }
+            if (!userId) return;
+
+            try {
+                const collectionRef = getInventoryCollectionRef();
+                // نستخدم الترتيب الحالي في الاستعلام للحصول على بيانات مرتبة من Firestore
+                const q = query(collectionRef, orderBy(currentSort.column, currentSort.direction)); 
+
+                unsubscribeFromFirestore = onSnapshot(q, (snapshot) => {
+                    const loadedItems = [];
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        loadedItems.push({
+                            id: doc.id,
+                            ...data,
+                            // ضمان أن الكميات هي أرقام
+                            quantity: Number(data.quantity || 0), 
+                            minQuantity: Number(data.minQuantity || 0)
+                        });
+                    });
+                    
+                    inventory = loadedItems;
+                    renderApp(); 
+                    document.getElementById('loading-state').style.display = 'none';
+
+                }, (error) => {
+                    console.error("Firestore Listen Error:", error);
+                    document.getElementById('data-error-message').innerHTML = `
+                        <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4 flex items-center" role="alert">
+                            <i data-lucide="alert-triangle" class="w-5 h-5 ml-2"></i>
+                            <span>فشل تحميل بيانات المخزون: ${error.message} (يرجى التحقق من قواعد أمان Firebase).</span>
+                        </div>
+                    `;
+                    inventory = []; 
+                    renderApp();
+                    document.getElementById('loading-state').style.display = 'none';
+                    if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+                });
+            } catch (e) {
+                console.error("Error setting up Firestore listener:", e);
+                document.getElementById('loading-state').style.display = 'none';
+            }
+        };
+
+        // --- Core Logic ---
+        
+        const filterInventory = (items) => {
+            const { query: search, category } = currentFilter;
+            
+            let filtered = items;
+
+            if (category !== 'الكل') {
+                filtered = filtered.filter(item => item.category === category);
+            }
+
+            if (search) {
+                const lowerSearch = search.toLowerCase();
+                filtered = filtered.filter(item => 
+                    item.name.toLowerCase().includes(lowerSearch) ||
+                    item.category.toLowerCase().includes(lowerSearch)
+                );
+            }
+            return filtered;
+        };
+        
+        const filterAndSort = () => {
+             // عند تغيير أي فلتر، نعيد عرض التطبيق بالبيانات المفلترة فقط
+            renderApp();
+        }
+
+        const handleSortChange = (column) => {
+            if (currentSort.column === column) {
+                currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.column = column;
+                currentSort.direction = 'asc';
+            }
+            // إعادة تشغيل المستمع للطلب من Firestore بيانات مرتبة جديدة (فرز فوري)
+            setupRealtimeListener();
+        };
+
+        // --- Modal & Form Handlers (Add/Edit) ---
+
+        const openAddEditModal = (itemId = null) => {
+            const isEditing = !!itemId;
+            currentItem = isEditing ? inventory.find(i => i.id === itemId) : null;
+
+            const name = currentItem?.name || '';
+            const quantity = currentItem?.quantity || 0;
+            const minQuantity = currentItem?.minQuantity || 0;
+            const expiryDate = currentItem?.expiryDate || '';
+            const category = currentItem?.category || inventoryCategories[0];
+            
+            const modalHtml = `
+                <div id="item-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50" dir="rtl">
+                    <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all scale-100">
+                        <div class="p-6 border-b flex justify-between items-center bg-indigo-50">
+                            <h2 class="text-2xl font-bold text-indigo-700">
+                                ${isEditing ? '📝 تعديل صنف: ' + name : '➕ إضافة صنف جديد'}
+                            </h2>
+                            <button onclick="closeModal('item-modal')" class="text-gray-400 hover:text-gray-600" aria-label="إغلاق">
+                                <i data-lucide="x" class="w-6 h-6"></i>
+                            </button>
+                        </div>
+
+                        <form id="item-form" class="p-6 space-y-4" data-mode="${isEditing ? 'edit' : 'add'}" data-item-id="${itemId || ''}">
+                            ${renderInput('اسم الدواء/المنتج', 'itemName', name, 'text', 'package', '', null, null)}
+                            
+                            <div class="grid grid-cols-2 gap-4">
+                                ${renderInput('الكمية الحالية (الرصيد الدفتري)', 'itemQuantity', quantity, 'number', 'box', '', '0', '1')}
+                                ${renderInput('الحد الأدنى للكمية', 'itemMinQuantity', minQuantity, 'number', 'alert-triangle', '', '0', '1')}
+                            </div>
+                            
+                            <div class="grid grid-cols-2 gap-4">
+                                ${renderInput('تاريخ الانتهاء', 'itemExpiryDate', expiryDate, 'date', 'calendar', '', null, null)}
+                                <div>
+                                    <label for="itemCategory" class="block text-sm font-medium text-gray-700 mb-1">الفئة</label>
+                                    <select id="itemCategory" name="itemCategory" class="block w-full rounded-md border-gray-300 py-2.5 pl-4 pr-8 text-sm focus:border-blue-500 focus:ring-blue-500">
+                                        ${inventoryCategories.map(cat => `<option value="${cat}" ${cat === category ? 'selected' : ''}>${cat}</option>`).join('')}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="pt-4 flex justify-start">
+                                <button
+                                    type="submit"
+                                    id="item-submit-button"
+                                    class="px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition duration-150 shadow-md"
+                                >
+                                    ${isEditing ? 'تعديل الصنف' : 'إضافة الصنف'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+            openModal(modalHtml);
+            document.getElementById('item-form').onsubmit = handleSubmit;
+        };
+
+        const handleSubmit = async (e) => {
+            e.preventDefault();
+            const form = e.target;
+            const submitButton = document.getElementById('item-submit-button');
+
+            const isEditing = form.dataset.mode === 'edit';
+            const itemId = form.dataset.itemId;
+            
+            if (!userId) {
+                alert('النظام غير مصادق بعد. حاول مرة أخرى.');
+                return;
+            }
+
+            const collectionRef = getInventoryCollectionRef();
+
+            // جمع البيانات من النموذج
+            const itemData = {
+                name: form.itemName.value.trim(),
+                category: form.itemCategory.value,
+                quantity: Number(form.itemQuantity.value),
+                minQuantity: Number(form.itemMinQuantity.value) || 0,
+                expiryDate: form.itemExpiryDate.value || null,
+                updatedAt: new Date().toISOString()
+            };
+
+            if (!itemData.name || itemData.quantity < 0) {
+                alert('الرجاء إدخال اسم وكمية صحيحة.');
+                return;
+            }
+
+            submitButton.disabled = true;
+            submitButton.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 ml-2 animate-spin"></i> جاري الحفظ...`;
+            if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+
+            try {
+                if (isEditing && itemId) {
+                    await updateDoc(doc(collectionRef, itemId), itemData);
+                } else {
+                    await addDoc(collectionRef, {
+                        ...itemData,
+                        createdAt: new Date().toISOString()
+                    });
+                }
+                closeModal('item-modal');
+            } catch (e) {
+                console.error("Firestore Save Error:", e);
+                alert(`فشل حفظ البيانات: ${e.message}`);
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = isEditing ? 'تعديل الصنف' : 'إضافة الصنف';
+                if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+            }
+        };
+
+        // --- Modal & Form Handlers (Delete) ---
+
+        const openConfirmModal = (itemId) => {
+            const item = inventory.find(i => i.id === itemId);
+            if (!item) return;
+
+            const modalHtml = `
+                <div id="confirm-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50" dir="rtl">
+                    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden p-6 text-center space-y-4">
+                        <i data-lucide="alert-triangle" class="w-12 h-12 text-red-500 mx-auto"></i>
+                        <h3 class="text-xl font-bold text-gray-900">تأكيد الحذف</h3>
+                        <p class="text-gray-600">هل أنت متأكد من حذف الصنف <span class="font-semibold text-red-600">${item.name}</span>؟ لا يمكن التراجع عن هذا الإجراء.</p>
+                        <div class="flex justify-center space-x-4 space-x-reverse pt-4">
+                            <button onclick="closeModal('confirm-modal')" class="px-6 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition">إلغاء</button>
+                            <button id="confirm-modal-button" data-item-id="${itemId}" class="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-semibold">نعم، احذف الصنف</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            openModal(modalHtml);
+            document.getElementById('confirm-modal-button').onclick = handleDeleteItem;
+        };
+
+        const handleDeleteItem = async (e) => {
+            const itemId = document.getElementById('confirm-modal-button').dataset.itemId;
+            const submitButton = e.target;
+            
+            submitButton.disabled = true;
+            submitButton.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 ml-2 animate-spin"></i> جاري الحذف...`;
+            if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+
+            try {
+                const collectionRef = getInventoryCollectionRef();
+                await deleteDoc(doc(collectionRef, itemId));
+                closeModal('confirm-modal');
+            } catch (e) {
+                console.error("Firestore Delete Error:", e);
+                alert(`فشل حذف الصنف: ${e.message}`);
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = 'نعم، احذف الصنف';
+                if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+            }
+        };
+
+        // --- Modal & Form Handlers (Audit) ---
+        
+        const openAuditModal = (itemId) => {
+            currentItem = inventory.find(i => i.id === itemId);
+            if (!currentItem) return;
+
+            const startingBookQuantity = currentItem.quantity;
+            const today = new Date().toISOString().substring(0, 10);
+            
+            // الدالة المسؤولة عن حساب الفروقات وتحديث الشاشة فورياً
+            const calculateInstantVariance = () => {
+                const purchased = Number(document.getElementById('purchasedQuantity').value) || 0;
+                const sold = Number(document.getElementById('soldQuantity').value) || 0;
+                const physical = Number(document.getElementById('physicalQuantity').value) || 0;
+                
+                const expected = startingBookQuantity + purchased - sold; 
+                const variance = physical - expected;
+
+                document.getElementById('expected-book-quantity').textContent = formatNumber(expected);
+
+                const varianceDisplay = document.getElementById('audit-variance-display');
+                varianceDisplay.className = "inline-flex items-center text-sm font-semibold rounded-full px-2 py-1 ";
+
+                let text = 'متطابق';
+                let colorClass = 'bg-gray-200 text-gray-700';
+                let icon = 'check-circle';
+
+                if (variance > 0) {
+                    text = `زيادة بـ ${formatNumber(variance)}`;
+                    colorClass = 'bg-green-100 text-green-700';
+                    icon = 'trending-up';
+                } else if (variance < 0) {
+                    text = `عجز بـ ${formatNumber(Math.abs(variance))}`;
+                    colorClass = 'bg-red-100 text-red-700';
+                    icon = 'trending-down';
+                }
+
+                varianceDisplay.innerHTML = `<i data-lucide="${icon}" class="w-4 h-4 ml-1"></i> ${text}`;
+                varianceDisplay.classList.add(...colorClass.split(' '));
+                if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+            };
+
+            const modalHtml = `
+                <div id="audit-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50" dir="rtl">
+                    <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all scale-100">
+                        <div class="p-6 border-b flex justify-between items-center bg-blue-50">
+                            <h2 class="text-2xl font-bold text-blue-700 flex items-center">
+                                <i data-lucide="scale" class="w-5 h-5 ml-2"></i>
+                                جرد ومطابقة صنف: ${currentItem.name}
+                            </h2>
+                            <button onclick="closeModal('audit-modal')" class="text-gray-400 hover:text-gray-600" aria-label="إغلاق">
+                                <i data-lucide="x" class="w-6 h-6"></i>
+                            </button>
+                        </div>
+
+                        <form id="audit-form" class="p-6 space-y-4">
+                            <p class="text-gray-700 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                الرصيد الدفتري المسجل قبل الحركات: <span class="font-bold text-lg text-indigo-700">${formatNumber(startingBookQuantity)} وحدة</span>
+                            </p>
+
+                            <div class="flex space-x-4 space-x-reverse">
+                                ${renderInput('كمية الشراء (الكمية الواردة)', 'purchasedQuantity', '0', 'number', 'arrow-up-circle', 'w-1/2', '0', '1')}
+                                ${renderInput('الكمية المباعة (الكمية الصادرة)', 'soldQuantity', '0', 'number', 'arrow-down-circle', 'w-1/2', '0', '1')}
+                            </div>
+                            
+                            ${renderInput('الرصيد الفعلي (الكمية المعدودة)', 'physicalQuantity', currentItem.quantity, 'number', 'box', '', '0', '1')}
+
+                            ${renderInput('تاريخ إجراء الجرد', 'lastAuditDate', currentItem.lastAuditDate || today, 'date', 'calendar')}
+
+                            <div class="p-3 rounded-lg border border-gray-300 space-y-2">
+                                <p class="text-gray-700">الرصيد الدفتري المتوقع: <span id="expected-book-quantity" class="font-bold text-lg text-indigo-700">${formatNumber(startingBookQuantity)}</span></p>
+                                <p class="text-gray-700">حالة المطابقة (العجز/الزيادة):</p>
+                                <span id="audit-variance-display" class="inline-flex items-center text-sm font-semibold rounded-full px-2 py-1 bg-gray-200 text-gray-700">
+                                    <i data-lucide="check-circle" class="w-4 h-4 ml-1"></i> متطابق
+                                </span>
+                            </div>
+
+                            <div class="pt-4 flex justify-start">
+                                <button
+                                    type="submit"
+                                    id="audit-submit-button"
+                                    class="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition duration-150 shadow-md flex items-center"
+                                >
+                                    تأكيد الجرد وتصحيح الرصيد
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+            openModal(modalHtml);
+
+            // ربط الأحداث (مباشرة لضمان عملها بعد إدراج الـ HTML)
+            calculateInstantVariance(); 
+
+            document.getElementById('purchasedQuantity').addEventListener('input', calculateInstantVariance);
+            document.getElementById('soldQuantity').addEventListener('input', calculateInstantVariance);
+            document.getElementById('physicalQuantity').addEventListener('input', calculateInstantVariance);
+
+            document.getElementById('audit-form').onsubmit = handleAuditSubmit;
+        };
+
+        const handleAuditSubmit = async (e) => {
+            e.preventDefault();
+            const form = e.target;
+            const submitButton = document.getElementById('audit-submit-button');
+
+            const purchased = Number(form.purchasedQuantity.value) || 0;
+            const sold = Number(form.soldQuantity.value) || 0;
+            const physicalQuantity = Number(form.physicalQuantity.value) || 0;
+            const lastAuditDate = form.lastAuditDate.value;
+            const startingBookQuantity = currentItem.quantity;
+
+            if (isNaN(physicalQuantity) || physicalQuantity < 0) {
+                alert('الرجاء إدخال كمية فعلية صحيحة وموجبة.');
+                return;
+            }
+            
+            const expectedBookQuantity = startingBookQuantity + purchased - sold;
+            const variance = physicalQuantity - expectedBookQuantity;
+
+            submitButton.disabled = true;
+            submitButton.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 ml-2 animate-spin"></i> جاري تحديث الجرد...`;
+            if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+
+            try {
+                const collectionRef = getInventoryCollectionRef();
+
+                await updateDoc(doc(collectionRef, currentItem.id), {
+                    quantity: physicalQuantity, // الرصيد الدفتري الجديد هو الكمية الفعلية
+                    lastAuditDate: lastAuditDate,
+                    updatedAt: new Date().toISOString(),
+                    
+                    lastAuditDetails: {
+                        date: lastAuditDate,
+                        startingQuantity: startingBookQuantity,
+                        purchased: purchased,
+                        sold: sold,
+                        expected: expectedBookQuantity,
+                        physical: physicalQuantity,
+                        variance: variance,
+                    }
+                });
+                closeModal('audit-modal');
+            } catch (e) {
+                console.error("Audit Update Error:", e);
+                alert(`فشل تحديث الجرد: ${e.message}`);
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = 'تأكيد الجرد وتصحيح الرصيد';
+                if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+            }
+        };
+
+        // --- Rendering Logic & Event Listeners ---
+
+        const renderTableHeader = () => {
+            // قائمة الأعمدة التي يمكن فرزها
+            const columns = [
+                { column: 'name', label: 'الاسم', alignment: 'text-right', sortable: true },
+                { column: 'category', label: 'الفئة', alignment: 'text-right', sortable: false },
+                { column: 'quantity', label: 'الكمية', alignment: 'text-center', sortable: true },
+                { column: 'minQuantity', label: 'الحد الأدنى', alignment: 'text-center', sortable: true },
+                { column: 'expiryDate', label: 'الانتهاء', alignment: 'text-right', sortable: true },
+                { column: 'status', label: 'الحالة', alignment: 'text-right', sortable: false },
+                { column: 'actions', label: 'الإجراءات', alignment: 'text-right', sortable: false },
+            ];
+
+            const headerHtml = columns.map(col => {
+                const isCurrentSort = currentSort.column === col.column;
+                const iconName = isCurrentSort ? (currentSort.direction === 'asc' ? 'arrow-up' : 'arrow-down') : 'chevrons-up-down';
+                
+                const sortClass = col.sortable ? 'sort-header cursor-pointer hover:bg-gray-100' : '';
+                const sortData = col.sortable ? `data-column="${col.column}"` : '';
+                const iconHtml = col.sortable ? 
+                    `<i data-lucide="${iconName}" class="w-3 h-3 inline"></i>` : '';
+
+                return `
+                    <th ${sortData} class="${sortClass} px-4 py-3 ${col.alignment} text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        ${col.label}
+                        ${iconHtml}
+                    </th>
+                `;
+            }).join('');
+
+            // يجب استخدام <thead> فقط
+            return `<thead class="bg-gray-50"><tr>${headerHtml}</tr></thead>`;
+        };
+
+
+        const renderApp = () => {
+            // 1. تصفية المخزون (الفرز تم بواسطة Firestore)
+            let filteredItems = filterInventory(inventory);
+
+            // 2. تحديث رأس الجدول والداتا
+            document.getElementById('inventory-table-head').innerHTML = renderTableHeader();
+            
+            const inventoryTableBody = filteredItems.map(item => {
+                const isLowStock = item.quantity <= item.minQuantity;
+                const isExpired = item.expiryDate && new Date(item.expiryDate) < new Date();
+                const stockStatus = isExpired ? 'منتهي' : (isLowStock ? 'قليل' : 'متاح');
+                const rowClasses = isExpired ? 'bg-red-50 hover:bg-red-100' : (isLowStock ? 'bg-yellow-50 hover:bg-yellow-100' : 'bg-white hover:bg-gray-50');
+
+                return `
+                    <tr class="${rowClasses} border-b responsive-table">
+                        <td data-label="الاسم" class="px-4 py-3 font-medium text-gray-900">${item.name}</td>
+                        <td data-label="الفئة" class="px-4 py-3">${item.category}</td>
+                        <td data-label="الكمية" class="px-4 py-3 font-bold text-center text-${isLowStock || isExpired ? 'red-600' : 'indigo-600'}">
+                            ${formatNumber(item.quantity)}
+                        </td>
+                        <td data-label="الحد الأدنى" class="px-4 py-3 text-center">${formatNumber(item.minQuantity)}</td>
+                        <td data-label="الانتهاء" class="px-4 py-3 text-red-500">${item.expiryDate || 'غير محدد'}</td>
+                        <td data-label="الحالة" class="px-4 py-3">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${isExpired ? 'bg-red-200 text-red-800' : (isLowStock ? 'bg-yellow-200 text-yellow-800' : 'bg-green-100 text-green-800')}">
+                                ${stockStatus}
+                            </span>
+                        </td>
+                        <td data-label="الإجراءات" class="px-4 py-3 whitespace-nowrap text-right">
+                            <div class="flex space-x-2 space-x-reverse justify-end sm:justify-start">
+                                <button data-item-id="${item.id}" class="audit-btn p-2 text-blue-600 hover:text-blue-800 transition duration-150 rounded-full hover:bg-blue-50" title="جرد ومطابقة الرصيد">
+                                    <i data-lucide="scale" class="w-5 h-5"></i>
+                                </button>
+                                <button data-item-id="${item.id}" class="edit-btn p-2 text-indigo-600 hover:text-indigo-800 transition duration-150 rounded-full hover:bg-indigo-50" title="تعديل الصنف">
+                                    <i data-lucide="edit-3" class="w-5 h-5"></i>
+                                </button>
+                                <button data-item-id="${item.id}" class="delete-btn p-2 text-red-600 hover:text-red-800 transition duration-150 rounded-full hover:bg-red-50" title="حذف الصنف">
+                                    <i data-lucide="trash-2" class="w-5 h-5"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            // 3. تحديث الإحصائيات
+            const totalItems = inventory.length;
+            const lowStockCount = inventory.filter(i => i.quantity <= i.minQuantity).length;
+            const expiredCount = inventory.filter(i => i.expiryDate && new Date(i.expiryDate) < new Date()).length;
+
+            document.getElementById('inventory-table-body').innerHTML = inventoryTableBody || 
+                `<tr><td colspan="7" class="py-12 text-center text-gray-500 text-lg">لا توجد أصناف تطابق معايير البحث أو الفرز.</td></tr>`;
+            
+            document.getElementById('stats-total').textContent = formatNumber(totalItems);
+            document.getElementById('stats-low-stock').textContent = formatNumber(lowStockCount);
+            document.getElementById('stats-expired').textContent = formatNumber(expiredCount);
+            
+            document.getElementById('user-id-display').textContent = userId || 'جاري المصادقة...';
+
+
+            // 4. إعادة ربط الأحداث (الأزرار ورؤوس الفرز)
+            
+            // Edit Buttons
+            document.querySelectorAll('.edit-btn').forEach(btn => {
+                btn.onclick = () => openAddEditModal(btn.dataset.itemId);
+            });
+            // Delete Buttons
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.onclick = () => openConfirmModal(btn.dataset.itemId);
+            });
+            // Audit Buttons
+            document.querySelectorAll('.audit-btn').forEach(btn => {
+                btn.onclick = () => openAuditModal(btn.dataset.itemId);
+            });
+            // Sort Headers
+            document.querySelectorAll('.sort-header').forEach(th => {
+                // نستخدم addEventListener لربط الدالة الصحيحة
+                th.addEventListener('click', () => handleSortChange(th.dataset.column));
+            });
+            // Lucide Icons
+            if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+        };
+
+        // --- Initial DOM Setup ---
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // ربط الفلترة
+            document.getElementById('search-input').addEventListener('input', (e) => {
+                currentFilter.query = e.target.value.trim();
+                filterAndSort();
+            });
+
+            document.getElementById('category-filter').addEventListener('change', (e) => {
+                currentFilter.category = e.target.value;
+                filterAndSort();
+            });
+
+            // ربط زر الإضافة 
+            document.getElementById('add-item-button').addEventListener('click', () => openAddEditModal());
+
+            // إعداد الفئات في قائمة التصفية
+            const categoryFilterSelect = document.getElementById('category-filter');
+            categoryFilterSelect.innerHTML = `<option value="الكل">جميع الفئات</option>` +
+                                            inventoryCategories.map(cat => `<option value="${cat}">${cat}</option>`).join('');
+
+            // بدء المصادقة وتحميل البيانات
+            authenticateAndStart();
+        });
+
+    </script>
+</head>
+
+<body dir="rtl" class="p-4 sm:p-8">
+
+    <div id="loading-state" class="fixed inset-0 bg-white bg-opacity-70 flex items-center justify-center z-50">
+        <div class="flex flex-col items-center p-6 bg-white rounded-lg shadow-xl">
+            <i data-lucide="loader-2" class="w-10 h-10 text-indigo-600 animate-spin mb-4"></i>
+            <p class="text-lg font-semibold text-gray-700">جاري تحميل البيانات...</p>
+            <p class="text-sm text-gray-500 mt-1">الرجاء الانتظار، يتم الاتصال بقاعدة البيانات.</p>
+        </div>
+    </div>
+
+    <div class="container mx-auto">
+        <div id="data-error-message">
+            </div>
+
+        <h1 class="text-4xl font-extrabold text-center mb-6 text-blue-700">💊 إدارة مخزون الصيدلية</h1>
+        
+        <div class="flex flex-col sm:flex-row justify-between items-center mb-6 p-4 bg-white rounded-xl shadow-sm border">
+            <button id="add-item-button" class="w-full sm:w-auto px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition shadow-md flex items-center justify-center mb-4 sm:mb-0">
+                <i data-lucide="plus" class="w-5 h-5 ml-2"></i>
+                إضافة صنف جديد
+            </button>
+            <div class="text-xs font-mono text-gray-500 break-all text-left">
+                User ID: <span id="user-id-display">Authenticating...</span>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div class="bg-white p-4 rounded-xl shadow flex items-center justify-between border-r-4 border-indigo-500">
+                <div>
+                    <p class="text-sm font-medium text-gray-500">إجمالي الأصناف</p>
+                    <p id="stats-total" class="text-2xl font-bold text-gray-900">0</p>
+                </div>
+                <i data-lucide="package-open" class="w-8 h-8 text-indigo-400"></i>
+            </div>
+            <div class="bg-white p-4 rounded-xl shadow flex items-center justify-between border-r-4 border-yellow-500">
+                <div>
+                    <p class="text-sm font-medium text-gray-500">أصناف تحتاج إعادة طلب</p>
+                    <p id="stats-low-stock" class="text-2xl font-bold text-yellow-700">0</p>
+                </div>
+                <i data-lucide="alert-triangle" class="w-8 h-8 text-yellow-400"></i>
+            </div>
+            <div class="bg-white p-4 rounded-xl shadow flex items-center justify-between border-r-4 border-red-500">
+                <div>
+                    <p class="text-sm font-medium text-gray-500">أصناف منتهية الصلاحية</p>
+                    <p id="stats-expired" class="text-2xl font-bold text-red-700">0</p>
+                </div>
+                <i data-lucide="calendar-x" class="w-8 h-8 text-red-400"></i>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-xl shadow-lg mb-8">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">تصفية وبحث المخزون</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="md:col-span-2">
+                    <label for="search-input" class="block text-sm font-medium text-gray-700 mb-1">البحث (الاسم أو الفئة)</label>
+                    <div class="relative rounded-md shadow-sm">
+                        <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
+                            <i data-lucide="search" class="w-5 h-5"></i>
+                        </div>
+                        <input type="text" id="search-input" placeholder="اسم الدواء أو جزء من الفئة" dir="rtl" class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2 text-right focus:border-blue-500 focus:ring-blue-500 text-sm">
+                    </div>
+                </div>
+                <div>
+                    <label for="category-filter" class="block text-sm font-medium text-gray-700 mb-1">تصفية حسب الفئة</label>
+                    <select id="category-filter" class="block w-full rounded-md border-gray-300 py-2.5 pl-4 pr-8 text-sm focus:border-blue-500 focus:ring-blue-500"></select>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead id="inventory-table-head">
+                        </thead>
+                    <tbody id="inventory-table-body" class="bg-white divide-y divide-gray-200">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

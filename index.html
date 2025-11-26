@@ -7,6 +7,7 @@
     <title>نظام إدارة المخزون الصيدلي</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap');
 
@@ -85,7 +86,7 @@
     <script type="module">
         // ** Firebase Imports **
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, updateDoc, doc, deleteDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, onSnapshot, updateDoc, doc, deleteDoc, query, orderBy, writeBatch } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
 
         // ----------------------------------------------------
@@ -121,7 +122,8 @@
         let inventory = [];
         let currentSort = { column: 'name', direction: 'asc' };
         let currentFilter = { query: '', category: 'الكل' };
-        let currentItem = null; 
+        let currentItem = null;
+        let importedData = null; // لتخزين بيانات الملف مؤقتًا
 
         const inventoryCategories = [
             "ادوية الاقراص", "اللبوس", "الفوار", "التجميل",
@@ -132,7 +134,7 @@
         // --- Firestore Helpers ---
         const getInventoryCollectionRef = () => {
             const rawAppId = firebaseConfig.appId || 'default-inventory';
-            const appId = rawAppId.replace(/[^a-zA-Z0-9_-]/g, '_'); 
+            const appId = rawAppId.replace(/[^a-zA-Z0-9_-]/g, '_');
             return collection(db, `artifacts/${appId}/users/${userId}/inventory`);
         };
 
@@ -143,29 +145,34 @@
         // --------------------------------------------------
         // ** دالة renderInput المعدلة باستخدام type="tel" و inputmode="decimal" **
         // --------------------------------------------------
-        const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = '', min = null) => {
+       // --------------------------------------------------
+// ** دالة renderInput المعدلة باستخدام type="tel" و inputmode="decimal" **
+// --------------------------------------------------
+const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = '', min = null) => {
 
-            let inputType = type;
-            let extraAttributes = '';
-            
-            const isQuantityOrValue = id.includes('Quantity') || id.includes('Value');
+    let inputType = type;
+    let extraAttributes = '';
 
-            if (isQuantityOrValue) {
-                // 💥 الإجراء الحاسم: نستخدم "tel" لفتح لوحة المفاتيح الرقمية في الجوال
-                inputType = 'tel'; 
-                min = null; // نضمن إزالة أي قيود min
-                
-                // نستخدم هذه السمات لتمكين إدخال الكسور العشرية والتحقق من النمط
-                extraAttributes += ` inputmode="decimal"`;
-                // هذا النمط يسمح بالأرقام ويسمح بنقطة أو فاصلة مرة واحدة للكسور 
-                extraAttributes += ` pattern="[0-9]*[.,]?[0-9]*"`; 
-            }
-            
-            // قيمة الحقل
-            const displayValue = value === 0 ? '0' : (value !== null && value !== undefined) ? formatNumber(value) : '';
-            
-            // 4. بناء عنصر الإدخال
-            return `
+    const isQuantityOrValue = id.includes('Quantity') || id.includes('Value') || id.includes('Price');
+
+    if (isQuantityOrValue) {
+        // 💥 الإجراء الحاسم: نستخدم "tel" لفتح لوحة المفاتيح الرقمية في الجوال
+        inputType = 'tel';
+        min = null; // نضمن إزالة أي قيود min
+
+        // نستخدم هذه السمات لتمكين إدخال الكسور العشرية والتحقق من النمط
+        extraAttributes += ` inputmode="decimal"`;
+        // هذا النمط يسمح بالأرقام ويسمح بنقطة أو فاصلة مرة واحدة للكسور
+        extraAttributes += ` pattern="[0-9]*[.,]?[0-9]*"`;
+    }
+
+    // قيمة الحقل
+    // **التعديل هنا:** نستخدم القيمة الخام مباشرة (سواء كانت نصاً أو رقماً)
+    // لضمان ظهور البيانات الصحيحة داخل حقل الإدخال لتمكين التعديل.
+    const displayValue = (value !== null && value !== undefined) ? String(value) : '';
+
+    // 4. بناء عنصر الإدخال
+    return `
         <div class="${classes}">
             <label for="${id}" class="block text-sm font-medium text-gray-700 mb-1">${label}</label>
             <div class="relative rounded-md shadow-sm">
@@ -176,9 +183,9 @@
                     type="${inputType}"
                     name="${id}"
                     id="${id}"
-                    value="${displayValue}" 
+                    value="${displayValue}"
                     placeholder="${label}"
-                    ${extraAttributes} 
+                    ${extraAttributes}
                     onfocus="${type === 'date' ? `this.type='date'` : ''}"
                     onblur="${type === 'date' ? `if(!this.value) this.type='text'` : ''}"
                     class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2 text-right focus:border-blue-500 focus:ring-blue-500 text-sm"
@@ -187,7 +194,7 @@
             </div>
         </div>
     `;
-        };
+};
         // --------------------------------------------------
 
         const closeModal = (modalId) => {
@@ -227,7 +234,7 @@
 
         const setupRealtimeListener = () => {
             if (unsubscribeFromFirestore) {
-                unsubscribeFromFirestore(); 
+                unsubscribeFromFirestore();
             }
             if (!userId) return;
 
@@ -243,7 +250,9 @@
                             id: doc.id,
                             ...data,
                             quantity: Number(data.quantity || 0),
-                            minQuantity: Number(data.minQuantity || 0)
+                            minQuantity: Number(data.minQuantity || 0),
+                            publicPrice: Number(data.publicPrice || 0),
+                            costPrice: Number(data.costPrice || 0)
                         });
                     });
 
@@ -285,7 +294,8 @@
                 const lowerSearch = search.toLowerCase();
                 filtered = filtered.filter(item =>
                     item.name.toLowerCase().includes(lowerSearch) ||
-                    item.category.toLowerCase().includes(lowerSearch)
+                    item.category.toLowerCase().includes(lowerSearch) ||
+                    item.code?.toLowerCase().includes(lowerSearch)
                 );
             }
             return filtered;
@@ -305,15 +315,429 @@
             setupRealtimeListener();
         };
 
+        // ----------------------------------------------------------------------------------
+        // ** منطق استيراد الملفات (Import Logic) **
+        // ----------------------------------------------------------------------------------
+
+        const getRequiredFields = (type) => {
+            switch (type) {
+                case 'items':
+                    return {
+                        code: 'كود الصنف (مطلوب)',
+                        name: 'اسم المنتج الأساسي (مطلوب)', // الاسم الأساسي
+                        fallbackName: 'اسم المنتج البديل (اختياري - سيستخدم إذا كان الأساسي فارغاً)', // الحقل الجديد
+                        publicPrice: 'سعر الجمهور (مطلوب)',
+                        minQuantity: 'الحد الأدنى للكمية',
+                        category: 'الفئة'
+                    };
+                case 'purchases':
+                    return {
+                        itemCode: 'كود الصنف/الباركود (مطلوب)',
+                        quantity: 'الكمية الواردة (مطلوب)',
+                        costPrice: 'سعر التكلفة (مطلوب)',
+                        expiryDate: 'تاريخ الانتهاء (مطلوب)'
+                    };
+                case 'sales':
+                    return {
+                        itemCode: 'كود الصنف/الباركود (مطلوب)',
+                        quantity: 'كمية البيع (مطلوب)',
+                        publicPrice: 'سعر البيع/الجمهور (اختياري)'
+                    };
+                default:
+                    return {};
+            }
+        };
+
+        const openImportModal = () => {
+            const modalHtml = `
+                <div id="import-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50" dir="rtl">
+                    <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden transform transition-all scale-100">
+                        <div class="p-6 border-b flex justify-between items-center bg-green-50">
+                            <h2 class="text-2xl font-bold text-green-700 flex items-center">
+                                <i data-lucide="upload" class="w-6 h-6 ml-2"></i>
+                                استيراد بيانات من ملف Excel
+                            </h2>
+                            <button onclick="closeModal('import-modal')" class="text-gray-400 hover:text-gray-600" aria-label="إغلاق">
+                                <i data-lucide="x" class="w-6 h-6"></i>
+                            </button>
+                        </div>
+                        
+                        <form id="import-step-1-form" class="p-6 space-y-4">
+                            <h3 class="text-lg font-semibold text-gray-800">الخطوة 1: اختيار نوع الملف وتحميله</h3>
+                            <div>
+                                <label for="importType" class="block text-sm font-medium text-gray-700 mb-1">نوع الملف</label>
+                                <select id="importType" name="importType" required class="block w-full rounded-md border-gray-300 py-2.5 pl-4 pr-8 text-sm focus:border-green-500 focus:ring-green-500">
+                                    <option value="">-- اختر نوع الملف --</option>
+                                    <option value="items">ملف الأصناف الأساسية (لإضافة وتحديث الأصناف)</option>
+                                    <option value="purchases">ملف المشتريات/الوارد (لإضافة كميات ورصيد)</option>
+                                    <option value="sales">ملف المبيعات/الصادر (لخصم الكميات)</option>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label for="fileInput" class="block text-sm font-medium text-gray-700 mb-1">تحميل ملف Excel (.xlsx)</label>
+                                <input type="file" id="fileInput" name="fileInput" accept=".xlsx, .xls" required 
+                                       class="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none p-2.5" />
+                            </div>
+
+                            <div class="pt-4 flex justify-start">
+                                <button
+                                    type="submit"
+                                    class="px-6 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition duration-150 shadow-md flex items-center"
+                                >
+                                    <i data-lucide="arrow-left" class="w-5 h-5 ml-2"></i>
+                                    الانتقال لمطابقة الحقول
+                                </button>
+                            </div>
+                        </form>
+
+                        <div id="import-step-2" class="p-6 space-y-4 hidden border-t border-gray-200">
+                            <h3 class="text-lg font-semibold text-gray-800">الخطوة 2: مطابقة حقول الملف بمتطلبات النظام</h3>
+                            <form id="import-mapping-form" class="space-y-4">
+                                <div id="mapping-fields" class="grid grid-cols-2 gap-4">
+                                    </div>
+                                <div id="import-summary-placeholder" class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4" role="alert">
+                                    <p class="font-bold">سيتم استيراد ومعالجة <span id="summary-rows-count">0</span> صف.</p>
+                                    <p class="text-sm">الرجاء مراجعة المطابقة قبل التأكيد.</p>
+                                </div>
+                                <div class="pt-4 flex justify-start">
+                                    <button
+                                        type="submit"
+                                        id="import-submit-button"
+                                        class="px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition duration-150 shadow-md flex items-center"
+                                    >
+                                        <i data-lucide="database" class="w-5 h-5 ml-2"></i>
+                                        بدء الاستيراد والمعالجة
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            `;
+            openModal(modalHtml);
+            document.getElementById('import-step-1-form').onsubmit = handleFileLoad;
+            document.getElementById('import-mapping-form').onsubmit = handleImportSubmit;
+        };
+
+        const handleFileLoad = (e) => {
+            e.preventDefault();
+            const file = document.getElementById('fileInput').files[0];
+            const importType = document.getElementById('importType').value;
+
+            if (!file || !importType) return;
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                // تحويل بيانات الورقة إلى مصفوفة من الكائنات
+                const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+                // افتراض أن الصف الأول هو رؤوس الأعمدة
+                const headers = jsonData[0];
+                // البيانات تبدأ من الصف الثاني
+                const rows = jsonData.slice(1);
+
+                if (!headers || rows.length === 0) {
+                    alert('الملف فارغ أو لا يحتوي على رؤوس أعمدة.');
+                    return;
+                }
+
+                importedData = {
+                    type: importType,
+                    headers: headers.map(h => h?.toString().trim() || '---'), // التأكد من أن الرؤوس نصوص
+                    rows: rows.filter(row => row.some(cell => cell !== undefined && cell !== null && cell !== ''))
+                };
+
+                // عرض الخطوة 2
+                document.getElementById('import-step-1-form').classList.add('hidden');
+                document.getElementById('import-step-2').classList.remove('hidden');
+                document.getElementById('summary-rows-count').textContent = importedData.rows.length;
+
+                renderMappingFields();
+            };
+            reader.readAsArrayBuffer(file);
+        };
+
+        const renderMappingFields = () => {
+            const requiredFields = getRequiredFields(importedData.type);
+            const container = document.getElementById('mapping-fields');
+            const headers = importedData.headers;
+            
+            // خيار التجاهل
+            const ignoreOption = '<option value="--- تجاهل هذا الحقل ---">--- تجاهل هذا الحقل ---</option>';
+
+            const mappingHtml = Object.keys(requiredFields).map(key => {
+                const label = requiredFields[key];
+                
+                // تحديد القيمة الافتراضية
+                // نبحث عن أقرب تطابق للاسم المطلوب باللغتين
+                let defaultValue = '--- تجاهل هذا الحقل ---';
+                const lowerLabel = label.split('(')[0].trim().toLowerCase(); 
+
+                const autoMatch = headers.find(h => {
+                    if (!h) return false;
+                    const lowerHeader = h.toLowerCase();
+                    // تطابق مباشر أو تطابق كلمة مفتاحية
+                    return lowerHeader.includes(lowerLabel) || lowerLabel.includes(lowerHeader) || 
+                           lowerHeader.includes('barcode') || lowerHeader.includes('كود') ||
+                           lowerHeader.includes('name') || lowerHeader.includes('اسم');
+                });
+                
+                if (autoMatch) {
+                    defaultValue = autoMatch;
+                }
+                
+                // للحقول المطلوبة نضمن عدم اختيار التجاهل كقيمة افتراضية إذا كان هناك تطابق
+                const isRequired = !label.includes('(اختياري');
+                if (isRequired && defaultValue === '--- تجاهل هذا الحقل ---') {
+                     // محاولة إيجاد حقل مطابق لرؤوس أعمدة شائعة
+                     const commonMatch = headers.find(h => {
+                        if (!h) return false;
+                        const lowerHeader = h.toLowerCase();
+                        if (key === 'code' && (lowerHeader.includes('code') || lowerHeader.includes('كود'))) return true;
+                        if (key === 'name' && (lowerHeader.includes('name') || lowerHeader.includes('اسم'))) return true;
+                        if (key === 'publicPrice' && (lowerHeader.includes('price') || lowerHeader.includes('سعر') || lowerHeader.includes('جمهور'))) return true;
+                        if (key === 'quantity' && (lowerHeader.includes('quantity') || lowerHeader.includes('كمية'))) return true;
+                        return false;
+                    });
+                    if (commonMatch) {
+                        defaultValue = commonMatch;
+                    }
+                }
+                
+                // لحقل fallbackName نجعل القيمة الافتراضية التجاهل لكونه اختياري
+                if (key === 'fallbackName') {
+                    defaultValue = '--- تجاهل هذا الحقل ---';
+                }
+
+                return `
+                    <div>
+                        <label for="map_${key}" class="block text-sm font-medium text-gray-700 mb-1">${label}</label>
+                        <select id="map_${key}" name="${key}" required class="block w-full rounded-md border-gray-300 py-2.5 pl-4 pr-8 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            ${ignoreOption}
+                            ${headers.map(h => 
+                                `<option value="${h}" ${h === defaultValue ? 'selected' : ''}>${h}</option>`
+                            ).join('')}
+                        </select>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = mappingHtml;
+            if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+        };
+
+        const handleImportSubmit = async (e) => {
+            e.preventDefault();
+            const form = e.target;
+            const submitButton = document.getElementById('import-submit-button');
+            const importType = importedData.type;
+            const headers = importedData.headers;
+            const rows = importedData.rows;
+
+            if (!userId) {
+                alert('النظام غير مصادق بعد. حاول مرة أخرى.');
+                return;
+            }
+
+            // إنشاء قاموس للمطابقة
+            const mapping = {};
+            const requiredFields = getRequiredFields(importType);
+            let isValidMapping = true;
+
+            Object.keys(requiredFields).forEach(key => {
+                const selectElement = form.querySelector(`[name="${key}"]`);
+                const selectedHeader = selectElement.value;
+                
+                // التحقق من الحقول المطلوبة (غير الاختيارية)
+                if (!requiredFields[key].includes('(اختياري') && selectedHeader === '--- تجاهل هذا الحقل ---') {
+                    alert(`الرجاء مطابقة الحقل المطلوب: ${requiredFields[key]}`);
+                    isValidMapping = false;
+                }
+
+                // نجد فهرس العمود المقابل
+                const columnIndex = headers.indexOf(selectedHeader);
+                mapping[key] = columnIndex !== -1 ? columnIndex : selectedHeader; // استخدام الفهرس أو القيمة (للتجاهل)
+            });
+
+            if (!isValidMapping) return;
+
+            submitButton.disabled = true;
+            submitButton.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 ml-2 animate-spin"></i> جاري المعالجة والاستيراد...`;
+            if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+
+            const batch = writeBatch(db);
+            const collectionRef = getInventoryCollectionRef();
+            const inventoryMap = inventory.reduce((map, item) => {
+                map[item.code] = { ...item, docId: item.id };
+                return map;
+            }, {});
+
+            const inventoryUpdates = {}; // لجمع التحديثات بالـ code
+
+            // ----------------------------------------------------
+            // ** معالجة بيانات الملف (Parsing and Aggregation) **
+            // ----------------------------------------------------
+
+            for (const row of rows) {
+                // تخطي الصفوف التي لا تحتوي على كود
+                const codeIndex = mapping.code || mapping.itemCode;
+                const itemCode = (codeIndex !== '--- تجاهل هذا الحقل ---' && row[codeIndex]) ? row[codeIndex].toString().trim() : null;
+                if (!itemCode) continue;
+
+                // ----------------------------------------
+                // A. معالجة ملف الأصناف (items)
+                // ----------------------------------------
+                if (importType === 'items') {
+                    // 1. استخراج القيمة الأساسية
+                    const primaryName = row[mapping.name]?.toString().trim();
+
+                    // 2. تطبيق منطق الاسم الأساسي والبديل
+                    let name = primaryName;
+                    if (!name && mapping.fallbackName && mapping.fallbackName !== '--- تجاهل هذا الحقل ---') {
+                        const fallbackIndex = mapping.fallbackName;
+                        const fallback = row[fallbackIndex]?.toString().trim();
+                        if (fallback) {
+                            name = fallback;
+                        }
+                    }
+
+                    // 3. التحقق من وجود اسم
+                    if (!name) continue; // يجب أن يكون هناك اسم أساسي أو بديل
+
+                    const publicPrice = Number(row[mapping.publicPrice]) || 0;
+                    const minQuantity = Number(row[mapping.minQuantity]) || 0;
+                    const category = row[mapping.category]?.toString().trim() || 'عام';
+                    
+                    inventoryUpdates[itemCode] = {
+                        code: itemCode,
+                        name: name,
+                        publicPrice: publicPrice,
+                        minQuantity: minQuantity,
+                        category: category,
+                        // لا نغير الكمية/الصلاحية من ملف الأصناف. يجب أن تكون صفر عند الإنشاء.
+                        quantity: inventoryMap[itemCode]?.quantity || 0,
+                        costPrice: inventoryMap[itemCode]?.costPrice || 0,
+                        expiryDate: inventoryMap[itemCode]?.expiryDate || null,
+                        createdAt: inventoryMap[itemCode]?.createdAt || new Date().toISOString(),
+                        updatedAt: new Date().toISOString()
+                    };
+
+                // ----------------------------------------
+                // B. معالجة ملف المشتريات (purchases)
+                // ----------------------------------------
+                } else if (importType === 'purchases') {
+                    const qtyIndex = mapping.quantity;
+                    const costIndex = mapping.costPrice;
+                    const expiryIndex = mapping.expiryDate;
+
+                    const purchasedQuantity = Number(row[qtyIndex]) || 0;
+                    const costPrice = Number(row[costIndex]) || 0;
+                    const expiryDateStr = row[expiryIndex]?.toString().trim() || null;
+                    
+                    // تحويل تاريخ الانتهاء: افتراض أنه قد يكون بتنسيق Excel الرقمي
+                    let expiryDate = null;
+                    if (expiryDateStr) {
+                         // إذا كانت القيمة رقماً كبيراً (تنسيق تاريخ Excel)
+                        if (!isNaN(expiryDateStr) && Number(expiryDateStr) > 10000) { 
+                            // تحويل تاريخ Excel إلى تاريخ JavaScript
+                            const date = new Date((Number(expiryDateStr) - 25569) * 86400 * 1000);
+                            expiryDate = date.toISOString().substring(0, 10);
+                        } else {
+                            expiryDate = new Date(expiryDateStr).toISOString().substring(0, 10) || null;
+                        }
+                    }
+
+                    // تجميع: الكمية تتراكم، أما التكلفة وتاريخ الانتهاء فيتم اعتماد القيمة الأخيرة في الملف
+                    inventoryUpdates[itemCode] = inventoryUpdates[itemCode] || { 
+                        quantity: inventoryMap[itemCode]?.quantity || 0, 
+                        ...inventoryMap[itemCode] 
+                    };
+                    
+                    inventoryUpdates[itemCode].quantity += purchasedQuantity;
+                    inventoryUpdates[itemCode].costPrice = costPrice; // آخر سعر هو السائد
+                    inventoryUpdates[itemCode].expiryDate = expiryDate; // آخر صلاحية هي السائدة
+                    inventoryUpdates[itemCode].updatedAt = new Date().toISOString();
+                    
+                // ----------------------------------------
+                // C. معالجة ملف المبيعات (sales)
+                // ----------------------------------------
+                } else if (importType === 'sales') {
+                    const qtyIndex = mapping.quantity;
+                    const priceIndex = mapping.publicPrice;
+                    
+                    const soldQuantity = Number(row[qtyIndex]) || 0;
+                    const publicPrice = Number(row[priceIndex]) || inventoryMap[itemCode]?.publicPrice || 0;
+
+                    // تجميع: الكمية تُخصم
+                    inventoryUpdates[itemCode] = inventoryUpdates[itemCode] || { 
+                        quantity: inventoryMap[itemCode]?.quantity || 0,
+                        ...inventoryMap[itemCode]
+                    };
+
+                    inventoryUpdates[itemCode].quantity -= soldQuantity;
+                    inventoryUpdates[itemCode].publicPrice = publicPrice; // تحديث السعر إذا كان متوفراً
+                    inventoryUpdates[itemCode].updatedAt = new Date().toISOString();
+                }
+            }
+            
+            // ----------------------------------------------------
+            // ** تطبيق التحديثات على Firebase **
+            // ----------------------------------------------------
+
+            let updatedCount = 0;
+            for (const code in inventoryUpdates) {
+                const updateData = inventoryUpdates[code];
+                const existingItem = inventoryMap[code];
+
+                if (existingItem) {
+                    // تحديث صنف موجود
+                    const docRef = doc(collectionRef, existingItem.docId);
+                    batch.update(docRef, updateData);
+                } else {
+                    // إضافة صنف جديد (في حالة items أو إذا ورد في purchases/sales ولم يكن موجوداً)
+                    const docRef = doc(collectionRef); 
+                    batch.set(docRef, {
+                        ...updateData,
+                        code: code, // نضمن وجود الكود
+                        name: updateData.name || `صنف غير مسمى - ${code}`, // اسم افتراضي إذا لم يكن في ملف الأصناف
+                        createdAt: updateData.createdAt || new Date().toISOString()
+                    });
+                }
+                updatedCount++;
+            }
+
+            try {
+                await batch.commit();
+                alert(`تم استيراد ومعالجة ${updatedCount} صنف بنجاح.`);
+                closeModal('import-modal');
+            } catch (e) {
+                console.error("Firebase Batch Commit Error:", e);
+                alert(`فشل إرسال البيانات إلى قاعدة البيانات: ${e.message}`);
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = 'بدء الاستيراد والمعالجة';
+                if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+            }
+        };
+
+
         // --- Modal & Form Handlers (Add/Edit) ---
 
         const openAddEditModal = (itemId = null) => {
             const isEditing = !!itemId;
             currentItem = isEditing ? inventory.find(i => i.id === itemId) : null;
 
+            const code = currentItem?.code || '';
             const name = currentItem?.name || '';
             const quantity = currentItem?.quantity || 0;
             const minQuantity = currentItem?.minQuantity || 0;
+            const publicPrice = currentItem?.publicPrice || 0;
+            const costPrice = currentItem?.costPrice || 0;
             const expiryDate = currentItem?.expiryDate || '';
             const category = currentItem?.category || inventoryCategories[0];
 
@@ -330,22 +754,27 @@
                         </div>
 
                         <form id="item-form" class="p-6 space-y-4" data-mode="${isEditing ? 'edit' : 'add'}" data-item-id="${itemId || ''}">
+                            ${renderInput('كود الصنف/الباركود', 'itemCode', code, 'text', 'barcode', '', null)}
                             ${renderInput('اسم الدواء/المنتج', 'itemName', name, 'text', 'package', '', null)}
-                            
+
                             <div class="grid grid-cols-2 gap-4">
+                                ${renderInput('سعر الجمهور', 'itemPublicPrice', publicPrice, 'text', 'tag', '', null)}
+                                ${renderInput('سعر التكلفة', 'itemCostPrice', costPrice, 'text', 'coins', '', null)}
+                            </div>
+
+                            <div class="grid grid-cols-3 gap-4">
                                 ${renderInput('الكمية الحالية (الرصيد الدفتري)', 'itemQuantity', quantity, 'text', 'box', '', null)}
                                 ${renderInput('الحد الأدنى للكمية', 'itemMinQuantity', minQuantity, 'text', 'alert-triangle', '', null)}
-                            </div>
-                            
-                            <div class="grid grid-cols-2 gap-4">
                                 ${renderInput('تاريخ الانتهاء', 'itemExpiryDate', expiryDate, 'date', 'calendar', '', null)}
-                                <div>
-                                    <label for="itemCategory" class="block text-sm font-medium text-gray-700 mb-1">الفئة</label>
-                                    <select id="itemCategory" name="itemCategory" class="block w-full rounded-md border-gray-300 py-2.5 pl-4 pr-8 text-sm focus:border-blue-500 focus:ring-blue-500">
-                                        ${inventoryCategories.map(cat => `<option value="${cat}" ${cat === category ? 'selected' : ''}>${cat}</option>`).join('')}
-                                    </select>
-                                </div>
                             </div>
+
+                            <div>
+                                <label for="itemCategory" class="block text-sm font-medium text-gray-700 mb-1">الفئة</label>
+                                <select id="itemCategory" name="itemCategory" class="block w-full rounded-md border-gray-300 py-2.5 pl-4 pr-8 text-sm focus:border-blue-500 focus:ring-blue-500">
+                                    ${inventoryCategories.map(cat => `<option value="${cat}" ${cat === category ? 'selected' : ''}>${cat}</option>`).join('')}
+                                </select>
+                            </div>
+
 
                             <div class="pt-4 flex justify-start">
                                 <button
@@ -364,6 +793,9 @@
             document.getElementById('item-form').onsubmit = handleSubmit;
         };
 
+        // --------------------------------------------------
+        // ** دالة معالجة إرسال النموذج (المعدلة للتعامل مع الفواصل العشرية)**
+        // --------------------------------------------------
         const handleSubmit = async (e) => {
             e.preventDefault();
             const form = e.target;
@@ -372,12 +804,29 @@
             const isEditing = form.dataset.mode === 'edit';
             const itemId = form.dataset.itemId;
 
-            // 💡 معالجة المدخلات: إزالة فواصل الآلاف (,) ثم تحويلها إلى رقم
-            const quantityValue = form.itemQuantity.value.trim().replace(/,/g, ''); 
-            const minQuantityValue = form.itemMinQuantity.value.trim().replace(/,/g, '');
+            // دالة مساعدة لتنظيف القيمة الرقمية وقراءة الكسور (الفاصلة العشرية العربية أو اللاتينية)
+            const cleanNumberValue = (value) => {
+                if (!value) return 0;
+                
+                // 1. استبدال فاصلة الآلاف (اللاتينية واللاتينية المقلوبة) بـ لا شيء
+                let cleaned = value.trim().replace(/[٬]/g, ''); // نزيل فاصلة الآلاف العربية
 
-            const quantity = Number(quantityValue) || 0;
-            const minQuantity = Number(minQuantityValue) || 0;
+                // 2. استبدال الفاصلة العشرية العربية (،) بالنقطة العشرية القياسية (.).
+                cleaned = cleaned.replace(/،/g, '.'); 
+                
+                // 3. تحويل الفاصلة اللاتينية (,) إلى نقطة عشرية (.). هذا يحل مشكلة الـ 1,5
+                cleaned = cleaned.replace(/,/g, '.'); 
+
+                // 4. محاولة التحويل إلى رقم
+                const num = Number(cleaned);
+                return isNaN(num) ? 0 : num;
+            };
+
+            // 💡 استخدام الدالة الجديدة لتنظيف المدخلات
+            const quantity = cleanNumberValue(form.itemQuantity.value);
+            const minQuantity = cleanNumberValue(form.itemMinQuantity.value);
+            const publicPrice = cleanNumberValue(form.itemPublicPrice.value);
+            const costPrice = cleanNumberValue(form.itemCostPrice.value);
 
 
             if (!userId) {
@@ -388,20 +837,21 @@
             const collectionRef = getInventoryCollectionRef();
 
             const itemData = {
+                code: form.itemCode.value.trim() || 'N/A',
                 name: form.itemName.value.trim(),
                 category: form.itemCategory.value,
-                quantity: quantity,
+                quantity: quantity, // سيتم تخزين القيمة الكسرية بشكل سليم هنا (مثل 1.5)
                 minQuantity: minQuantity,
+                publicPrice: publicPrice,
+                costPrice: costPrice,
                 expiryDate: form.itemExpiryDate.value || null,
                 updatedAt: new Date().toISOString()
             };
 
-            if (!itemData.name || isNaN(itemData.quantity) || isNaN(itemData.minQuantity)) {
-                alert('الرجاء إدخال اسم وكمية صحيحة (أرقام).');
+            if (!itemData.name || isNaN(itemData.quantity) || isNaN(itemData.minQuantity) || !itemData.code) {
+                alert('الرجاء إدخال اسم وكود وكمية صحيحة (أرقام).');
                 return;
             }
-             // حقل الكمية قد يكون صفراً، لكن ليس سالباً إذا كان المتصفح يتجاهل التعديلات 
-            // فلن يُسمح بالرقم السالب، ولكن هذا التعديل يضمن قبول الكسور.
 
             submitButton.disabled = true;
             submitButton.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 ml-2 animate-spin"></i> جاري الحفظ...`;
@@ -537,7 +987,7 @@
                                 ${renderInput('كمية الشراء (الكمية الواردة)', 'purchasedQuantity', '0', 'text', 'arrow-up-circle', 'w-1/2', null)}
                                 ${renderInput('الكمية المباعة (الكمية الصادرة)', 'soldQuantity', '0', 'text', 'arrow-down-circle', 'w-1/2', null)}
                             </div>
-                            
+
                             ${renderInput('الرصيد الفعلي (الكمية المعدودة)', 'physicalQuantity', currentItem.quantity, 'text', 'box', '', null)}
 
                             ${renderInput('تاريخ إجراء الجرد', 'lastAuditDate', currentItem.lastAuditDate || today, 'date', 'calendar')}
@@ -607,7 +1057,7 @@
                 const collectionRef = getInventoryCollectionRef();
 
                 await updateDoc(doc(collectionRef, currentItem.id), {
-                    quantity: physicalQuantity, 
+                    quantity: physicalQuantity,
                     lastAuditDate: lastAuditDate,
                     updatedAt: new Date().toISOString(),
 
@@ -729,7 +1179,7 @@
             const categoriesHtml = ['الكل', 'كمية منخفضة', 'منتهي الصلاحية', ...inventoryCategories].map(cat => {
                 const isActive = currentFilter.category === cat;
                 return `
-                    <button 
+                    <button
                         data-category="${cat}"
                         class="px-3 py-1 text-sm rounded-full transition ${isActive ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}"
                     >
@@ -743,6 +1193,10 @@
             container.querySelectorAll('button').forEach(button => {
                 button.addEventListener('click', (e) => {
                     let category = e.currentTarget.dataset.category;
+
+                    currentFilter.query = ''; // مسح البحث عند التصفية بالفئة
+                    document.getElementById('search-input').value = '';
+
                     if (category === 'كمية منخفضة') {
                         currentFilter.category = 'كمية منخفضة';
                         renderApp(true);
@@ -769,7 +1223,7 @@
             }
 
 
-            renderSummaryCards(inventory); 
+            renderSummaryCards(inventory);
             renderInventoryTable(itemsToDisplay);
             renderCategoryFilter();
             document.getElementById('search-input').value = currentFilter.query;
@@ -788,10 +1242,12 @@
         window.closeModal = closeModal;
         window.openConfirmModal = openConfirmModal;
         window.openAuditModal = openAuditModal;
+        window.openImportModal = openImportModal; // ربط دالة الاستيراد
 
         // حدث البحث
         document.getElementById('search-input').addEventListener('input', (e) => {
             currentFilter.query = e.target.value.trim();
+            currentFilter.category = 'الكل'; // مسح الفلتر عند البحث
             filterAndSort();
         });
 
@@ -806,8 +1262,11 @@
         // ربط دالة الإضافة بزر "إضافة صنف جديد"
         document.getElementById('add-item-button').addEventListener('click', () => openAddEditModal());
 
+        // ربط دالة الاستيراد بزر "استيراد ملف حركة"
+        document.getElementById('import-file-button').addEventListener('click', () => openImportModal());
+
     </script>
-</body>
+</head>
 
 <body class="bg-gray-100">
     <div id="loading-state" class="fixed inset-0 bg-gray-900 bg-opacity-90 flex flex-col items-center justify-center z-50">
@@ -822,11 +1281,18 @@
                 <i data-lucide="home" class="w-6 h-6 ml-2"></i>
                 لوحة تحكم المخزون
             </h1>
-            <button id="add-item-button"
-                class="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition duration-150 shadow-md flex items-center">
-                <i data-lucide="plus" class="w-5 h-5 ml-2"></i>
-                إضافة صنف جديد
-            </button>
+            <div class="flex space-x-4 space-x-reverse">
+                <button id="import-file-button"
+                    class="px-4 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition duration-150 shadow-md flex items-center">
+                    <i data-lucide="upload" class="w-5 h-5 ml-2"></i>
+                    استيراد ملف حركة
+                </button>
+                <button id="add-item-button"
+                    class="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition duration-150 shadow-md flex items-center">
+                    <i data-lucide="plus" class="w-5 h-5 ml-2"></i>
+                    إضافة صنف جديد
+                </button>
+            </div>
         </div>
     </header>
 
@@ -864,7 +1330,7 @@
                         <i data-lucide="alert-triangle" class="w-6 h-6"></i>
                     </div>
                     <div class="mr-4">
-                        <p class="text-sm font-medium text-gray-500">كمية منخفضة / منتهية</p>
+                        <p class="text-sm font-medium text-gray-500">كمية منخفضة</p>
                         <p id="low-stock-count" class="text-2xl font-bold text-gray-900">0</p>
                     </div>
                 </div>

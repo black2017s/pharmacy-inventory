@@ -90,7 +90,7 @@
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
 
         // ----------------------------------------------------
-        // ⚠️ الإعدادات الخاصة بـ Firebase - يجب تغييرها ⚠️
+        // ⚠️ الإعدادات الخاصة بـ Firebase - يجب التأكد من صحتها ⚠️
         // ----------------------------------------------------
         const firebaseConfig = {
 
@@ -143,61 +143,88 @@
         const formatNumber = (num) => new Intl.NumberFormat('ar-EG').format(num);
 
         // --------------------------------------------------
+        // ** دالة cleanNumberValue لمعالجة الأرقام العشرية (الفاصلة أو النقطة) **
+        // --------------------------------------------------
+        const cleanNumberValue = (value) => {
+            if (value === null || value === undefined) return 0; // التأكد من التعامل مع null/undefined
+
+            // 💥 التصحيح: تحويل القيمة إلى نص أولاً
+            let valueAsString = String(value);
+
+            // 1. استبدال فاصلة الآلاف (اللاتينية والعربية) بـ لا شيء
+            let cleaned = valueAsString.trim().replace(/[٬,]/g, '');
+
+            // 2. استبدال الفاصلة العشرية العربية (،) بالنقطة العشرية القياسية (.).
+            cleaned = cleaned.replace(/،/g, '.');
+
+            // 3. محاولة التحويل إلى رقم
+            const num = Number(cleaned);
+            return isNaN(num) ? 0 : num;
+        };
+
+        // --------------------------------------------------
+        // ** دالة normalizeText (جديدة) لجعل البحث أكثر مرونة **
+        // --------------------------------------------------
+        const normalizeText = (text) => {
+            if (!text) return '';
+            // تحويل إلى نص، إزالة المسافات، الأرقام، وعلامات الترقيم ماعدا الحروف العربية والإنجليزية
+            // ثم التحويل إلى أحرف صغيرة للبحث بالإنجليزية (code, name)
+            // [\u0600-\u06FF] هو نطاق الحروف العربية
+            return String(text).toLowerCase().replace(/[^\w\s\u0600-\u06FF]/g, '').replace(/\s/g, '');
+        };
+
+        // --------------------------------------------------
         // ** دالة renderInput المعدلة باستخدام type="tel" و inputmode="decimal" **
         // --------------------------------------------------
-       // --------------------------------------------------
-// ** دالة renderInput المعدلة باستخدام type="tel" و inputmode="decimal" **
-// --------------------------------------------------
-const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = '', min = null) => {
+        const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = '', min = null) => {
 
-    let inputType = type;
-    let extraAttributes = '';
+            let inputType = type;
+            let extraAttributes = '';
 
-    const isQuantityOrValue = id.includes('Quantity') || id.includes('Value') || id.includes('Price');
+            const isQuantityOrValue = id.includes('Quantity') || id.includes('Value') || id.includes('Price');
 
-    if (isQuantityOrValue) {
-        // 💥 الإجراء الحاسم: نستخدم "tel" لفتح لوحة المفاتيح الرقمية في الجوال
-        inputType = 'tel';
-        min = null; // نضمن إزالة أي قيود min
+            if (isQuantityOrValue) {
+                // 💥 الإجراء الحاسم: نستخدم "tel" لفتح لوحة المفاتيح الرقمية في الجوال
+                inputType = 'tel';
+                min = null; // نضمن إزالة أي قيود min
 
-        // نستخدم هذه السمات لتمكين إدخال الكسور العشرية والتحقق من النمط
-        extraAttributes += ` inputmode="decimal"`;
-        // هذا النمط يسمح بالأرقام ويسمح بنقطة أو فاصلة مرة واحدة للكسور
-        extraAttributes += ` pattern="[0-9]*[.,]?[0-9]*"`;
-    }
+                // نستخدم هذه السمات لتمكين إدخال الكسور العشرية والتحقق من النمط
+                extraAttributes += ` inputmode="decimal"`;
+                // هذا النمط يسمح بالأرقام ويسمح بنقطة أو فاصلة مرة واحدة للكسور
+                extraAttributes += ` pattern="[0-9]*[.,]?[0-9]*"`;
+            }
 
-    // قيمة الحقل
-    // **التعديل هنا:** نستخدم القيمة الخام مباشرة (سواء كانت نصاً أو رقماً)
-    // لضمان ظهور البيانات الصحيحة داخل حقل الإدخال لتمكين التعديل.
-    const displayValue = (value !== null && value !== undefined) ? String(value) : '';
+            // قيمة الحقل
+            const displayValue = (value !== null && value !== undefined) ? String(value) : '';
 
-    // 4. بناء عنصر الإدخال
-    return `
-        <div class="${classes}">
-            <label for="${id}" class="block text-sm font-medium text-gray-700 mb-1">${label}</label>
-            <div class="relative rounded-md shadow-sm">
-                <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
-                    <i data-lucide="${icon}" class="w-5 h-5"></i>
+            // 4. بناء عنصر الإدخال
+            return `
+                <div class="${classes}">
+                    <label for="${id}" class="block text-sm font-medium text-gray-700 mb-1">${label}</label>
+                    <div class="relative rounded-md shadow-sm">
+                        <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
+                            <i data-lucide="${icon}" class="w-5 h-5"></i>
+                        </div>
+                        <input
+                            type="${inputType}"
+                            name="${id}"
+                            id="${id}"
+                            value="${displayValue}"
+                            placeholder="${label}"
+                            ${extraAttributes}
+                            onfocus="${type === 'date' ? `this.type='date'` : ''}"
+                            onblur="${type === 'date' ? `if(!this.value) this.type='text'` : ''}"
+                            class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2 text-right focus:border-blue-500 focus:ring-blue-500 text-sm"
+                            dir="rtl"
+                        >
+                    </div>
                 </div>
-                <input
-                    type="${inputType}"
-                    name="${id}"
-                    id="${id}"
-                    value="${displayValue}"
-                    placeholder="${label}"
-                    ${extraAttributes}
-                    onfocus="${type === 'date' ? `this.type='date'` : ''}"
-                    onblur="${type === 'date' ? `if(!this.value) this.type='text'` : ''}"
-                    class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2 text-right focus:border-blue-500 focus:ring-blue-500 text-sm"
-                    dir="rtl"
-                >
-            </div>
-        </div>
-    `;
-};
+            `;
+        };
         // --------------------------------------------------
 
-        const closeModal = (modalId) => {
+        // 💥 التعديل هنا: جعل الدوال المستخدمة في 'onclick' عالمية (Global)
+        window.closeModal = (modalId) => {
             document.getElementById(modalId)?.remove();
             if (typeof lucide !== 'undefined') { lucide.createIcons(); }
         };
@@ -323,7 +350,7 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
             switch (type) {
                 case 'items':
                     return {
-                        code: 'كود الصنف (مطلوب)',
+                        code: 'كود الصنف/الباركود (مطلوب)',
                         name: 'اسم المنتج الأساسي (مطلوب)', // الاسم الأساسي
                         fallbackName: 'اسم المنتج البديل (اختياري - سيستخدم إذا كان الأساسي فارغاً)', // الحقل الجديد
                         publicPrice: 'سعر الجمهور (مطلوب)',
@@ -333,6 +360,8 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
                 case 'purchases':
                     return {
                         itemCode: 'كود الصنف/الباركود (مطلوب)',
+                        itemNameArabic: 'اسم الصنف العربي (اختياري - للإنشاء فقط)', // ** جديد **
+                        itemNameEnglish: 'اسم الصنف الإنجليزي (اختياري - كبديل للاسم العربي)', // ** جديد **
                         quantity: 'الكمية الواردة (مطلوب)',
                         costPrice: 'سعر التكلفة (مطلوب)',
                         expiryDate: 'تاريخ الانتهاء (مطلوب)'
@@ -340,6 +369,8 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
                 case 'sales':
                     return {
                         itemCode: 'كود الصنف/الباركود (مطلوب)',
+                        itemNameArabic: 'اسم الصنف العربي (اختياري - للإنشاء فقط)', // ** جديد **
+                        itemNameEnglish: 'اسم الصنف الإنجليزي (اختياري - كبديل للاسم العربي)', // ** جديد **
                         quantity: 'كمية البيع (مطلوب)',
                         publicPrice: 'سعر البيع/الجمهور (اختياري)'
                     };
@@ -357,7 +388,7 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
                                 <i data-lucide="upload" class="w-6 h-6 ml-2"></i>
                                 استيراد بيانات من ملف Excel
                             </h2>
-                            <button onclick="closeModal('import-modal')" class="text-gray-400 hover:text-gray-600" aria-label="إغلاق">
+                            <button onclick="window.closeModal('import-modal')" class="text-gray-400 hover:text-gray-600" aria-label="إغلاق">
                                 <i data-lucide="x" class="w-6 h-6"></i>
                             </button>
                         </div>
@@ -375,8 +406,8 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
                             </div>
                             
                             <div>
-                                <label for="fileInput" class="block text-sm font-medium text-gray-700 mb-1">تحميل ملف Excel (.xlsx)</label>
-                                <input type="file" id="fileInput" name="fileInput" accept=".xlsx, .xls" required 
+                                <label for="fileInput" class="block text-sm font-medium text-gray-700 mb-1">تحميل ملف Excel (.xlsx, .csv)</label>
+                                <input type="file" id="fileInput" name="fileInput" accept=".xlsx, .xls, .csv" required 
                                        class="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none p-2.5" />
                             </div>
 
@@ -430,26 +461,90 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
             const reader = new FileReader();
             reader.onload = function (e) {
                 const data = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, { type: 'array' });
+                const isCSV = file.name.endsWith('.csv');
+                // 1. قراءة الملف كـ array of arrays (للحفاظ على ترتيب الصفوف وتحسين قراءة التواريخ)
+                const workbook = XLSX.read(data, { type: 'array', raw: false, cellDates: true, dateNF: 'yyyy-mm-dd' });
+
                 const sheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[sheetName];
-                // تحويل بيانات الورقة إلى مصفوفة من الكائنات
-                const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
-                // افتراض أن الصف الأول هو رؤوس الأعمدة
-                const headers = jsonData[0];
-                // البيانات تبدأ من الصف الثاني
-                const rows = jsonData.slice(1);
+                // الحصول على كامل البيانات كصفوف (بدون تحديد رأس تلقائي)
+                const fullData = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
 
-                if (!headers || rows.length === 0) {
-                    alert('الملف فارغ أو لا يحتوي على رؤوس أعمدة.');
+                if (!fullData || fullData.length === 0) {
+                    alert('الملف فارغ أو لا يحتوي على بيانات.');
+                    return;
+                }
+
+                let headerRowIndex = -1;
+                let dataRows = [];
+                let headers = [];
+
+                // 2. البحث عن صف الرؤوس الصحيح
+                // نستخدم أول 10 صفوف للبحث
+                for (let i = 0; i < Math.min(fullData.length, 10); i++) {
+                    const row = fullData[i];
+
+                    // 💥 التعديل الحاسم: استخدام دالة normalizeText لجعل البحث مرنًا
+                    const normalizedRowText = (row || [])
+                        .map(c => normalizeText(c))
+                        .join('|');
+
+                    // 🚀 البحث الشامل: فحص كل خلية في الصف بصيغة نظيفة لتحديد ما إذا كان يحتوي على حقل الكود
+                    const isCodeHeader = (row || []).some(cell => {
+                        if (!cell) return false;
+                        // تنظيف النص: إزالة المسافات، النقاط، الشرطات، وتحويل للحروف الصغيرة
+                        const cleanCell = String(cell).toLowerCase().replace(/[\s\.\-\_]/g, '');
+                        // البحث عن 'كود' أو 'كصنف' (ك.صنف) أو 'باركود' أو 'code' أو 'barcode'
+                        return cleanCell.includes('كود') || cleanCell.includes('كصنف') || cleanCell.includes('باركود') || cleanCell.includes('code') || cleanCell.includes('barcode');
+                    });
+
+                    if (importType === 'purchases' || importType === 'sales') {
+                        // يجب أن يحتوي على: كود و كمية
+                        const hasCode = isCodeHeader;
+                        const hasQuantity = normalizedRowText.includes('كمية') || normalizedRowText.includes('quantity');
+
+                        if (hasCode && hasQuantity) {
+                            headerRowIndex = i;
+                            break;
+                        }
+                    } else if (importType === 'items') {
+                        // يجب أن يحتوي على: كود و اسم/صنف
+                        const hasCode = isCodeHeader;
+                        // نبحث عن (اسم) أو (صنف) أو (name)
+                        const hasName = normalizedRowText.includes('اسم') || normalizedRowText.includes('صنف') || normalizedRowText.includes('name');
+
+                        if (hasCode && hasName) {
+                            headerRowIndex = i;
+                            break;
+                        }
+                    }
+                }
+
+                // 3. تحديد الرؤوس والبيانات
+                if (headerRowIndex !== -1) {
+                    headers = fullData[headerRowIndex];
+                    dataRows = fullData.slice(headerRowIndex + 1);
+                } else {
+                    const required = importType === 'items' ? 'الكود و (اسم صنف أو الاسم العربي)' : 'الكود و الكمية';
+                    alert(`لم يتم العثور على صف الرؤوس المتوقع لنوع الملف (${importType}). يرجى التأكد من احتواء أحد الصفوف على: ${required}.`);
+                    return;
+                }
+
+                // تنظيف الرؤوس وإزالة الصفوف الفارغة بالكامل
+                headers = headers.map(h => h?.toString().trim() || '---');
+                dataRows = dataRows.filter(row => row.some(cell => String(cell || '').trim() !== ''));
+
+
+                if (dataRows.length === 0) {
+                    alert('لم يتم العثور على أي صفوف بيانات صالحة بعد العثور على الرؤوس.');
                     return;
                 }
 
                 importedData = {
                     type: importType,
-                    headers: headers.map(h => h?.toString().trim() || '---'), // التأكد من أن الرؤوس نصوص
-                    rows: rows.filter(row => row.some(cell => cell !== undefined && cell !== null && cell !== ''))
+                    headers: headers,
+                    rows: dataRows
                 };
 
                 // عرض الخطوة 2
@@ -466,51 +561,61 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
             const requiredFields = getRequiredFields(importedData.type);
             const container = document.getElementById('mapping-fields');
             const headers = importedData.headers;
-            
+
             // خيار التجاهل
             const ignoreOption = '<option value="--- تجاهل هذا الحقل ---">--- تجاهل هذا الحقل ---</option>';
 
             const mappingHtml = Object.keys(requiredFields).map(key => {
                 const label = requiredFields[key];
-                
+
                 // تحديد القيمة الافتراضية
                 // نبحث عن أقرب تطابق للاسم المطلوب باللغتين
                 let defaultValue = '--- تجاهل هذا الحقل ---';
-                const lowerLabel = label.split('(')[0].trim().toLowerCase(); 
+                const lowerLabel = label.split('(')[0].trim().toLowerCase();
 
                 const autoMatch = headers.find(h => {
                     if (!h) return false;
-                    const lowerHeader = h.toLowerCase();
-                    // تطابق مباشر أو تطابق كلمة مفتاحية
-                    return lowerHeader.includes(lowerLabel) || lowerLabel.includes(lowerHeader) || 
-                           lowerHeader.includes('barcode') || lowerHeader.includes('كود') ||
-                           lowerHeader.includes('name') || lowerHeader.includes('اسم');
+                    const lowerHeader = normalizeText(h);
+
+                    // 💥 منطق المطابقة التلقائية المحدث
+                    if (key === 'code' || key === 'itemCode') {
+                        // 🚀 تم التعديل ليشمل 'باركود' باللغتين
+                        return lowerHeader.includes('كود') || lowerHeader.includes('barcode') || lowerHeader.includes('code') || lowerHeader.includes('كصنف') || lowerHeader.includes('باركود');
+                    }
+                    if (key === 'name' || key === 'itemNameArabic') { // مطابقة الاسم الأساسي/العربي
+                        return lowerHeader.includes('اسم') || lowerHeader.includes('صنف') || lowerHeader.includes('name') || lowerHeader.includes('عربى');
+                    }
+                    if (key === 'fallbackName' || key === 'itemNameEnglish') { // مطابقة الاسم البديل/الإنجليزي
+                        return lowerHeader.includes('بديل') || lowerHeader.includes('انجليزى') || lowerHeader.includes('english');
+                    }
+                    if (key === 'publicPrice') {
+                        return lowerHeader.includes('سعرجمهور') || lowerHeader.includes('سعر') || lowerHeader.includes('price');
+                    }
+                    if (key === 'quantity') {
+                        return lowerHeader.includes('كمية') || lowerHeader.includes('quantity');
+                    }
+                    if (key === 'costPrice') {
+                        return lowerHeader.includes('تكلفة') || lowerHeader.includes('cost');
+                    }
+                    if (key === 'expiryDate') {
+                        return lowerHeader.includes('انتهاء') || lowerHeader.includes('expiry') || lowerHeader.includes('تاريخصلاحية');
+                    }
+                    if (key === 'category') {
+                        return lowerHeader.includes('فئة') || lowerHeader.includes('category');
+                    }
+                    if (key === 'minQuantity') {
+                        return lowerHeader.includes('حدادنى') || lowerHeader.includes('minimum');
+                    }
+                    // مطابقة مباشرة (لأي حقل اختياري آخر)
+                    return lowerHeader.includes(normalizeText(lowerLabel));
                 });
-                
+
                 if (autoMatch) {
                     defaultValue = autoMatch;
                 }
-                
-                // للحقول المطلوبة نضمن عدم اختيار التجاهل كقيمة افتراضية إذا كان هناك تطابق
-                const isRequired = !label.includes('(اختياري');
-                if (isRequired && defaultValue === '--- تجاهل هذا الحقل ---') {
-                     // محاولة إيجاد حقل مطابق لرؤوس أعمدة شائعة
-                     const commonMatch = headers.find(h => {
-                        if (!h) return false;
-                        const lowerHeader = h.toLowerCase();
-                        if (key === 'code' && (lowerHeader.includes('code') || lowerHeader.includes('كود'))) return true;
-                        if (key === 'name' && (lowerHeader.includes('name') || lowerHeader.includes('اسم'))) return true;
-                        if (key === 'publicPrice' && (lowerHeader.includes('price') || lowerHeader.includes('سعر') || lowerHeader.includes('جمهور'))) return true;
-                        if (key === 'quantity' && (lowerHeader.includes('quantity') || lowerHeader.includes('كمية'))) return true;
-                        return false;
-                    });
-                    if (commonMatch) {
-                        defaultValue = commonMatch;
-                    }
-                }
-                
-                // لحقل fallbackName نجعل القيمة الافتراضية التجاهل لكونه اختياري
-                if (key === 'fallbackName') {
+
+                // لحقل fallbackName و itemNameEnglish نجعل القيمة الافتراضية التجاهل لكونه اختياري (إذا لم تتم المطابقة التلقائية)
+                if (key === 'fallbackName' || key === 'itemNameEnglish') {
                     defaultValue = '--- تجاهل هذا الحقل ---';
                 }
 
@@ -519,9 +624,9 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
                         <label for="map_${key}" class="block text-sm font-medium text-gray-700 mb-1">${label}</label>
                         <select id="map_${key}" name="${key}" required class="block w-full rounded-md border-gray-300 py-2.5 pl-4 pr-8 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                             ${ignoreOption}
-                            ${headers.map(h => 
-                                `<option value="${h}" ${h === defaultValue ? 'selected' : ''}>${h}</option>`
-                            ).join('')}
+                            ${headers.map(h =>
+                    `<option value="${h}" ${h === defaultValue ? 'selected' : ''}>${h}</option>`
+                ).join('')}
                         </select>
                     </div>
                 `;
@@ -552,7 +657,7 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
             Object.keys(requiredFields).forEach(key => {
                 const selectElement = form.querySelector(`[name="${key}"]`);
                 const selectedHeader = selectElement.value;
-                
+
                 // التحقق من الحقول المطلوبة (غير الاختيارية)
                 if (!requiredFields[key].includes('(اختياري') && selectedHeader === '--- تجاهل هذا الحقل ---') {
                     alert(`الرجاء مطابقة الحقل المطلوب: ${requiredFields[key]}`);
@@ -572,149 +677,186 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
 
             const batch = writeBatch(db);
             const collectionRef = getInventoryCollectionRef();
+
+            // خريطة المخزون الحالي للبحث عن الأصناف بسرعة
             const inventoryMap = inventory.reduce((map, item) => {
                 map[item.code] = { ...item, docId: item.id };
                 return map;
             }, {});
 
-            const inventoryUpdates = {}; // لجمع التحديثات بالـ code
-
-            // ----------------------------------------------------
-            // ** معالجة بيانات الملف (Parsing and Aggregation) **
-            // ----------------------------------------------------
+            const inventoryUpdates = {}; // لجمع التحديثات من الملفات قبل كتابتها
+            const updatedCodes = new Set(); // لتتبع الأصناف التي تم تحديثها من الملف
 
             for (const row of rows) {
-                // تخطي الصفوف التي لا تحتوي على كود
-                const codeIndex = mapping.code || mapping.itemCode;
-                const itemCode = (codeIndex !== '--- تجاهل هذا الحقل ---' && row[codeIndex]) ? row[codeIndex].toString().trim() : null;
+                let itemCode;
+
+                // يتم تحديد الكود بناءً على نوع الملف
+                if (importType === 'items') {
+                    itemCode = String(row[mapping.code] || '').trim() || null;
+                } else {
+                    itemCode = String(row[mapping.itemCode] || '').trim() || null;
+                }
+
                 if (!itemCode) continue;
 
+                updatedCodes.add(itemCode);
+
+                // تهيئة بيانات التحديث/الإضافة
+                inventoryUpdates[itemCode] = inventoryUpdates[itemCode] || {
+                    quantity: inventoryMap[itemCode]?.quantity || 0,
+                    costPrice: inventoryMap[itemCode]?.costPrice || 0,
+                    publicPrice: inventoryMap[itemCode]?.publicPrice || 0,
+                    minQuantity: inventoryMap[itemCode]?.minQuantity || 0,
+                    category: inventoryMap[itemCode]?.category || inventoryCategories[0],
+                    expiryDate: inventoryMap[itemCode]?.expiryDate || null,
+                    createdAt: inventoryMap[itemCode]?.createdAt || new Date().toISOString(),
+                    name: inventoryMap[itemCode]?.name || 'غير محدد',
+                    docId: inventoryMap[itemCode]?.docId || null,
+                };
+
+                const updateData = inventoryUpdates[itemCode];
+
                 // ----------------------------------------
-                // A. معالجة ملف الأصناف (items)
+                // A. معالجة ملف الأصناف الأساسية (items)
                 // ----------------------------------------
                 if (importType === 'items') {
-                    // 1. استخراج القيمة الأساسية
-                    const primaryName = row[mapping.name]?.toString().trim();
+                    const nameIndex = mapping.name;
+                    const publicPriceIndex = mapping.publicPrice;
+                    const minQtyIndex = mapping.minQuantity;
+                    const categoryIndex = mapping.category;
+                    const fallbackNameIndex = mapping.fallbackName;
 
-                    // 2. تطبيق منطق الاسم الأساسي والبديل
-                    let name = primaryName;
-                    if (!name && mapping.fallbackName && mapping.fallbackName !== '--- تجاهل هذا الحقل ---') {
-                        const fallbackIndex = mapping.fallbackName;
-                        const fallback = row[fallbackIndex]?.toString().trim();
-                        if (fallback) {
-                            name = fallback;
-                        }
-                    }
+                    const name = String(row[nameIndex] || '').trim() || String(row[fallbackNameIndex] || '').trim() || updateData.name;
+                    const publicPrice = cleanNumberValue(row[publicPriceIndex]);
+                    const minQuantity = cleanNumberValue(row[minQtyIndex]) || 0;
+                    const category = String(row[categoryIndex] || '').trim() || updateData.category;
 
-                    // 3. التحقق من وجود اسم
-                    if (!name) continue; // يجب أن يكون هناك اسم أساسي أو بديل
+                    updateData.name = name;
+                    updateData.publicPrice = publicPrice;
+                    updateData.minQuantity = minQuantity;
+                    updateData.category = category;
+                    // لا نغير الكمية/الصلاحية من ملف الأصناف.
+                    updateData.updatedAt = new Date().toISOString();
 
-                    const publicPrice = Number(row[mapping.publicPrice]) || 0;
-                    const minQuantity = Number(row[mapping.minQuantity]) || 0;
-                    const category = row[mapping.category]?.toString().trim() || 'عام';
-                    
-                    inventoryUpdates[itemCode] = {
-                        code: itemCode,
-                        name: name,
-                        publicPrice: publicPrice,
-                        minQuantity: minQuantity,
-                        category: category,
-                        // لا نغير الكمية/الصلاحية من ملف الأصناف. يجب أن تكون صفر عند الإنشاء.
-                        quantity: inventoryMap[itemCode]?.quantity || 0,
-                        costPrice: inventoryMap[itemCode]?.costPrice || 0,
-                        expiryDate: inventoryMap[itemCode]?.expiryDate || null,
-                        createdAt: inventoryMap[itemCode]?.createdAt || new Date().toISOString(),
-                        updatedAt: new Date().toISOString()
-                    };
-
-                // ----------------------------------------
-                // B. معالجة ملف المشتريات (purchases)
-                // ----------------------------------------
+                    // ----------------------------------------
+                    // B. معالجة ملف المشتريات (purchases)
+                    // ----------------------------------------
                 } else if (importType === 'purchases') {
                     const qtyIndex = mapping.quantity;
                     const costIndex = mapping.costPrice;
                     const expiryIndex = mapping.expiryDate;
 
-                    const purchasedQuantity = Number(row[qtyIndex]) || 0;
-                    const costPrice = Number(row[costIndex]) || 0;
-                    const expiryDateStr = row[expiryIndex]?.toString().trim() || null;
-                    
-                    // تحويل تاريخ الانتهاء: افتراض أنه قد يكون بتنسيق Excel الرقمي
+                    const purchasedQuantity = cleanNumberValue(row[qtyIndex]);
+                    const costPrice = cleanNumberValue(row[costIndex]);
+
+                    // تحويل تاريخ الانتهاء
                     let expiryDate = null;
-                    if (expiryDateStr) {
-                         // إذا كانت القيمة رقماً كبيراً (تنسيق تاريخ Excel)
-                        if (!isNaN(expiryDateStr) && Number(expiryDateStr) > 10000) { 
-                            // تحويل تاريخ Excel إلى تاريخ JavaScript
-                            const date = new Date((Number(expiryDateStr) - 25569) * 86400 * 1000);
-                            expiryDate = date.toISOString().substring(0, 10);
-                        } else {
-                            expiryDate = new Date(expiryDateStr).toISOString().substring(0, 10) || null;
+                    const expiryValue = row[expiryIndex];
+
+                    if (expiryValue) {
+                        try {
+                            // إذا كانت القيمة كائن تاريخ (نتيجة لـ cellDates: true)
+                            if (expiryValue instanceof Date) {
+                                expiryDate = expiryValue.toISOString().substring(0, 10);
+                            }
+                            // إذا كانت القيمة نصاً (تاريخ بصيغة نصية)
+                            else if (typeof expiryValue === 'string') {
+                                expiryDate = new Date(expiryValue).toISOString().substring(0, 10);
+                            }
+                            // إذا كانت القيمة رقماً (تاريخ بتنسيق Excel الرقمي)
+                            else if (!isNaN(expiryValue) && Number(expiryValue) > 10000) {
+                                // تحويل تاريخ Excel إلى تاريخ JavaScript (ناقص 25569 يوم)
+                                const date = new Date(Math.round((Number(expiryValue) - 25569) * 86400 * 1000));
+                                expiryDate = date.toISOString().substring(0, 10);
+                            }
+                        } catch (e) {
+                            console.warn("Date Parsing Error:", e, "Value:", expiryValue);
+                            expiryDate = null;
                         }
                     }
 
                     // تجميع: الكمية تتراكم، أما التكلفة وتاريخ الانتهاء فيتم اعتماد القيمة الأخيرة في الملف
-                    inventoryUpdates[itemCode] = inventoryUpdates[itemCode] || { 
-                        quantity: inventoryMap[itemCode]?.quantity || 0, 
-                        ...inventoryMap[itemCode] 
-                    };
-                    
-                    inventoryUpdates[itemCode].quantity += purchasedQuantity;
-                    inventoryUpdates[itemCode].costPrice = costPrice; // آخر سعر هو السائد
-                    inventoryUpdates[itemCode].expiryDate = expiryDate; // آخر صلاحية هي السائدة
-                    inventoryUpdates[itemCode].updatedAt = new Date().toISOString();
-                    
-                // ----------------------------------------
-                // C. معالجة ملف المبيعات (sales)
-                // ----------------------------------------
+                    updateData.quantity += purchasedQuantity;
+                    updateData.costPrice = costPrice; // آخر سعر هو السائد
+                    if (expiryDate) {
+                        updateData.expiryDate = expiryDate; // آخر تاريخ هو السائد
+                    }
+                    updateData.updatedAt = new Date().toISOString();
+
+                    // ----------------------------------------
+                    // C. معالجة ملف المبيعات (sales)
+                    // ----------------------------------------
                 } else if (importType === 'sales') {
                     const qtyIndex = mapping.quantity;
                     const priceIndex = mapping.publicPrice;
-                    
-                    const soldQuantity = Number(row[qtyIndex]) || 0;
-                    const publicPrice = Number(row[priceIndex]) || inventoryMap[itemCode]?.publicPrice || 0;
 
-                    // تجميع: الكمية تُخصم
-                    inventoryUpdates[itemCode] = inventoryUpdates[itemCode] || { 
-                        quantity: inventoryMap[itemCode]?.quantity || 0,
-                        ...inventoryMap[itemCode]
-                    };
+                    const soldQuantity = cleanNumberValue(row[qtyIndex]);
+                    const publicPrice = mapping.publicPrice === '--- تجاهل هذا الحقل ---' ?
+                        updateData.publicPrice : cleanNumberValue(row[priceIndex]);
 
-                    inventoryUpdates[itemCode].quantity -= soldQuantity;
-                    inventoryUpdates[itemCode].publicPrice = publicPrice; // تحديث السعر إذا كان متوفراً
-                    inventoryUpdates[itemCode].updatedAt = new Date().toISOString();
+                    // خصم الكمية
+                    updateData.quantity = Math.max(0, updateData.quantity - soldQuantity);
+                    // تحديث سعر الجمهور (اختياري)
+                    updateData.publicPrice = publicPrice;
+                    updateData.updatedAt = new Date().toISOString();
+                }
+
+                // ----------------------------------------------------
+                // ** منطق استخلاص الاسم من ملف الحركة (المشتريات/المبيعات) **
+                // ----------------------------------------------------
+                let transactionItemName = null;
+
+                if (importType === 'purchases' || importType === 'sales') {
+                    const arabicNameIndex = mapping.itemNameArabic;
+                    const englishNameIndex = mapping.itemNameEnglish;
+
+                    // استخلاص الاسم العربي
+                    const arabicName = (arabicNameIndex !== '--- تجاهل هذا الحقل ---' && arabicNameIndex !== undefined) ?
+                        String(row[arabicNameIndex] || '').trim() : '';
+
+                    // استخلاص الاسم الإنجليزي
+                    const englishName = (englishNameIndex !== '--- تجاهل هذا الحقل ---' && englishNameIndex !== undefined) ?
+                        String(row[englishNameIndex] || '').trim() : '';
+
+                    // الأولوية للاسم العربي، ثم الاسم الإنجليزي
+                    transactionItemName = arabicName || englishName;
+                }
+
+                // نتحقق إذا كان الصنف غير موجود في المخزون الحالي وتم إضافته من ملف مشتريات/مبيعات
+                if (!inventoryMap[itemCode] && (importType === 'purchases' || importType === 'sales')) {
+                    // إذا كان صنف حركة فقط، نضيف له الحد الأدنى = 0 والفئة = غير مصنف
+                    // ** نستخدم الاسم المستخلص من ملف الحركة (العربي ثم الإنجليزي) **
+                    updateData.name = transactionItemName || `صنف جديد: ${itemCode}`;
+                    updateData.minQuantity = 0;
+                    updateData.category = 'غير مصنف';
+                    updateData.publicPrice = updateData.publicPrice || 0;
+                    updateData.costPrice = updateData.costPrice || 0;
                 }
             }
-            
-            // ----------------------------------------------------
-            // ** تطبيق التحديثات على Firebase **
-            // ----------------------------------------------------
+
 
             let updatedCount = 0;
-            for (const code in inventoryUpdates) {
-                const updateData = inventoryUpdates[code];
-                const existingItem = inventoryMap[code];
+            // تنفيذ Batch Write
+            for (const itemCode of updatedCodes) {
+                const updateData = inventoryUpdates[itemCode];
+                const itemRef = updateData.docId ? doc(collectionRef, updateData.docId) : doc(collectionRef);
 
-                if (existingItem) {
-                    // تحديث صنف موجود
-                    const docRef = doc(collectionRef, existingItem.docId);
-                    batch.update(docRef, updateData);
-                } else {
-                    // إضافة صنف جديد (في حالة items أو إذا ورد في purchases/sales ولم يكن موجوداً)
-                    const docRef = doc(collectionRef); 
-                    batch.set(docRef, {
-                        ...updateData,
-                        code: code, // نضمن وجود الكود
-                        name: updateData.name || `صنف غير مسمى - ${code}`, // اسم افتراضي إذا لم يكن في ملف الأصناف
-                        createdAt: updateData.createdAt || new Date().toISOString()
-                    });
-                }
+                // حذف المفتاح غير المستخدم في الكتابة
+                delete updateData.docId;
+
+                batch.set(itemRef, {
+                    code: itemCode,
+                    ...updateData,
+                    // تأكيد قيمة تاريخ الإنشاء
+                    createdAt: updateData.createdAt || new Date().toISOString()
+                });
                 updatedCount++;
             }
 
             try {
                 await batch.commit();
                 alert(`تم استيراد ومعالجة ${updatedCount} صنف بنجاح.`);
-                closeModal('import-modal');
+                window.closeModal('import-modal');
             } catch (e) {
                 console.error("Firebase Batch Commit Error:", e);
                 alert(`فشل إرسال البيانات إلى قاعدة البيانات: ${e.message}`);
@@ -725,13 +867,14 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
             }
         };
 
+        // --- Modal & Form Handlers (Add/Edit, Delete, Audit) ---
 
-        // --- Modal & Form Handlers (Add/Edit) ---
-
-        const openAddEditModal = (itemId = null) => {
+        // 💥 التعديل هنا: جعل الدالة عالمية (Global)
+        window.openAddEditModal = (itemId = null) => {
             const isEditing = !!itemId;
             currentItem = isEditing ? inventory.find(i => i.id === itemId) : null;
 
+            // يتم استخدام دالة cleanNumberValue لتنظيف القيمة قبل عرضها في حقل الإدخال
             const code = currentItem?.code || '';
             const name = currentItem?.name || '';
             const quantity = currentItem?.quantity || 0;
@@ -748,41 +891,43 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
                             <h2 class="text-2xl font-bold text-indigo-700">
                                 ${isEditing ? '📝 تعديل صنف: ' + name : '➕ إضافة صنف جديد'}
                             </h2>
-                            <button onclick="closeModal('item-modal')" class="text-gray-400 hover:text-gray-600" aria-label="إغلاق">
+                            <button onclick="window.closeModal('item-modal')" class="text-gray-400 hover:text-gray-600" aria-label="إغلاق">
                                 <i data-lucide="x" class="w-6 h-6"></i>
                             </button>
                         </div>
-
                         <form id="item-form" class="p-6 space-y-4" data-mode="${isEditing ? 'edit' : 'add'}" data-item-id="${itemId || ''}">
-                            ${renderInput('كود الصنف/الباركود', 'itemCode', code, 'text', 'barcode', '', null)}
-                            ${renderInput('اسم الدواء/المنتج', 'itemName', name, 'text', 'package', '', null)}
-
                             <div class="grid grid-cols-2 gap-4">
-                                ${renderInput('سعر الجمهور', 'itemPublicPrice', publicPrice, 'text', 'tag', '', null)}
-                                ${renderInput('سعر التكلفة', 'itemCostPrice', costPrice, 'text', 'coins', '', null)}
+                                ${renderInput('كود/باركود الصنف', 'itemCode', code, 'text', 'barcode', 'col-span-2', null)}
+                                ${renderInput('اسم الصنف', 'itemName', name, 'text', 'tag', 'col-span-2', null)}
+
+                                <div>
+                                    <label for="itemCategory" class="block text-sm font-medium text-gray-700 mb-1">الفئة</label>
+                                    <select id="itemCategory" name="itemCategory" required
+                                        class="block w-full rounded-md border-gray-300 py-2.5 pl-4 pr-3 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                        ${inventoryCategories.map(cat =>
+                `<option value="${cat}" ${cat === category ? 'selected' : ''}>${cat}</option>`
+            ).join('')}
+                                    </select>
+                                </div>
+                                ${renderInput('الحد الأدنى للكمية', 'itemMinQuantity', minQuantity, 'tel', 'zap', 'w-1/2', null)}
                             </div>
 
-                            <div class="grid grid-cols-3 gap-4">
-                                ${renderInput('الكمية الحالية (الرصيد الدفتري)', 'itemQuantity', quantity, 'text', 'box', '', null)}
-                                ${renderInput('الحد الأدنى للكمية', 'itemMinQuantity', minQuantity, 'text', 'alert-triangle', '', null)}
-                                ${renderInput('تاريخ الانتهاء', 'itemExpiryDate', expiryDate, 'date', 'calendar', '', null)}
+                            <div class="grid grid-cols-2 gap-4 border p-4 rounded-lg bg-gray-50">
+                                <h3 class="col-span-2 font-semibold text-gray-700">بيانات المخزون والقيمة</h3>
+                                ${renderInput('الكمية الحالية', 'itemQuantity', quantity, 'tel', 'box', '', null)}
+                                ${renderInput('تاريخ الانتهاء', 'itemExpiryDate', expiryDate, 'date', 'calendar')}
+                                ${renderInput('سعر الجمهور', 'itemPublicPrice', publicPrice, 'tel', 'dollar-sign')}
+                                ${renderInput('سعر التكلفة', 'itemCostPrice', costPrice, 'tel', 'building-2')}
                             </div>
-
-                            <div>
-                                <label for="itemCategory" class="block text-sm font-medium text-gray-700 mb-1">الفئة</label>
-                                <select id="itemCategory" name="itemCategory" class="block w-full rounded-md border-gray-300 py-2.5 pl-4 pr-8 text-sm focus:border-blue-500 focus:ring-blue-500">
-                                    ${inventoryCategories.map(cat => `<option value="${cat}" ${cat === category ? 'selected' : ''}>${cat}</option>`).join('')}
-                                </select>
-                            </div>
-
 
                             <div class="pt-4 flex justify-start">
                                 <button
                                     type="submit"
                                     id="item-submit-button"
-                                    class="px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition duration-150 shadow-md"
+                                    class="px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition duration-150 shadow-md flex items-center"
                                 >
-                                    ${isEditing ? 'تعديل الصنف' : 'إضافة الصنف'}
+                                    <i data-lucide="${isEditing ? 'save' : 'plus'}" class="w-5 h-5 ml-2"></i>
+                                    ${isEditing ? 'حفظ التعديلات' : 'إضافة الصنف'}
                                 </button>
                             </div>
                         </form>
@@ -793,34 +938,12 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
             document.getElementById('item-form').onsubmit = handleSubmit;
         };
 
-        // --------------------------------------------------
-        // ** دالة معالجة إرسال النموذج (المعدلة للتعامل مع الفواصل العشرية)**
-        // --------------------------------------------------
         const handleSubmit = async (e) => {
             e.preventDefault();
             const form = e.target;
             const submitButton = document.getElementById('item-submit-button');
-
             const isEditing = form.dataset.mode === 'edit';
             const itemId = form.dataset.itemId;
-
-            // دالة مساعدة لتنظيف القيمة الرقمية وقراءة الكسور (الفاصلة العشرية العربية أو اللاتينية)
-            const cleanNumberValue = (value) => {
-                if (!value) return 0;
-                
-                // 1. استبدال فاصلة الآلاف (اللاتينية واللاتينية المقلوبة) بـ لا شيء
-                let cleaned = value.trim().replace(/[٬]/g, ''); // نزيل فاصلة الآلاف العربية
-
-                // 2. استبدال الفاصلة العشرية العربية (،) بالنقطة العشرية القياسية (.).
-                cleaned = cleaned.replace(/،/g, '.'); 
-                
-                // 3. تحويل الفاصلة اللاتينية (,) إلى نقطة عشرية (.). هذا يحل مشكلة الـ 1,5
-                cleaned = cleaned.replace(/,/g, '.'); 
-
-                // 4. محاولة التحويل إلى رقم
-                const num = Number(cleaned);
-                return isNaN(num) ? 0 : num;
-            };
 
             // 💡 استخدام الدالة الجديدة لتنظيف المدخلات
             const quantity = cleanNumberValue(form.itemQuantity.value);
@@ -828,14 +951,12 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
             const publicPrice = cleanNumberValue(form.itemPublicPrice.value);
             const costPrice = cleanNumberValue(form.itemCostPrice.value);
 
-
             if (!userId) {
                 alert('النظام غير مصادق بعد. حاول مرة أخرى.');
                 return;
             }
 
             const collectionRef = getInventoryCollectionRef();
-
             const itemData = {
                 code: form.itemCode.value.trim() || 'N/A',
                 name: form.itemName.value.trim(),
@@ -848,17 +969,12 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
                 updatedAt: new Date().toISOString()
             };
 
-            if (!itemData.name || isNaN(itemData.quantity) || isNaN(itemData.minQuantity) || !itemData.code) {
-                alert('الرجاء إدخال اسم وكود وكمية صحيحة (أرقام).');
-                return;
-            }
-
             submitButton.disabled = true;
             submitButton.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 ml-2 animate-spin"></i> جاري الحفظ...`;
             if (typeof lucide !== 'undefined') { lucide.createIcons(); }
 
             try {
-                if (isEditing && itemId) {
+                if (isEditing) {
                     await updateDoc(doc(collectionRef, itemId), itemData);
                 } else {
                     await addDoc(collectionRef, {
@@ -866,31 +982,30 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
                         createdAt: new Date().toISOString()
                     });
                 }
-                closeModal('item-modal');
+                window.closeModal('item-modal');
             } catch (e) {
                 console.error("Firestore Save Error:", e);
-                alert(`فشل حفظ البيانات: ${e.message}`);
+                alert(`فشل حفظ الصنف: ${e.message}`);
             } finally {
                 submitButton.disabled = false;
-                submitButton.textContent = isEditing ? 'تعديل الصنف' : 'إضافة الصنف';
+                submitButton.textContent = isEditing ? 'حفظ التعديلات' : 'إضافة الصنف';
                 if (typeof lucide !== 'undefined') { lucide.createIcons(); }
             }
         };
 
-        // --- Modal & Form Handlers (Delete) (لم تتغير) ---
-
-        const openConfirmModal = (itemId) => {
+        // 💥 التعديل هنا: جعل الدالة عالمية (Global)
+        window.openDeleteConfirmModal = (itemId) => {
             const item = inventory.find(i => i.id === itemId);
             if (!item) return;
 
             const modalHtml = `
                 <div id="confirm-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50" dir="rtl">
-                    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden p-6 text-center space-y-4">
+                    <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 text-center transform transition-all scale-100">
                         <i data-lucide="alert-triangle" class="w-12 h-12 text-red-500 mx-auto"></i>
                         <h3 class="text-xl font-bold text-gray-900">تأكيد الحذف</h3>
                         <p class="text-gray-600">هل أنت متأكد من حذف الصنف <span class="font-semibold text-red-600">${item.name}</span>؟ لا يمكن التراجع عن هذا الإجراء.</p>
                         <div class="flex justify-center space-x-4 space-x-reverse pt-4">
-                            <button onclick="closeModal('confirm-modal')" class="px-6 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition">إلغاء</button>
+                            <button onclick="window.closeModal('confirm-modal')" class="px-6 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition">إلغاء</button>
                             <button id="confirm-modal-button" data-item-id="${itemId}" class="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-semibold">نعم، احذف الصنف</button>
                         </div>
                     </div>
@@ -903,7 +1018,6 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
         const handleDeleteItem = async (e) => {
             const itemId = document.getElementById('confirm-modal-button').dataset.itemId;
             const submitButton = e.target;
-
             submitButton.disabled = true;
             submitButton.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 ml-2 animate-spin"></i> جاري الحذف...`;
             if (typeof lucide !== 'undefined') { lucide.createIcons(); }
@@ -911,7 +1025,7 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
             try {
                 const collectionRef = getInventoryCollectionRef();
                 await deleteDoc(doc(collectionRef, itemId));
-                closeModal('confirm-modal');
+                window.closeModal('confirm-modal');
             } catch (e) {
                 console.error("Firestore Delete Error:", e);
                 alert(`فشل حذف الصنف: ${e.message}`);
@@ -922,81 +1036,40 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
             }
         };
 
-        // --- Modal & Form Handlers (Audit) ---
-
-        const openAuditModal = (itemId) => {
+        // 💥 التعديل هنا: جعل الدالة عالمية (Global)
+        window.openAuditModal = (itemId) => {
             currentItem = inventory.find(i => i.id === itemId);
             if (!currentItem) return;
 
             const startingBookQuantity = currentItem.quantity;
             const today = new Date().toISOString().substring(0, 10);
 
-            // الدالة المسؤولة عن حساب الفروقات وتحديث الشاشة فورياً
-            const calculateInstantVariance = () => {
-                // نستخدم .value.replace(/,/g, '') لضمان إزالة فواصل الآلاف/الفاصلة العربية
-                const purchased = Number(document.getElementById('purchasedQuantity').value.trim().replace(/,/g, '')) || 0;
-                const sold = Number(document.getElementById('soldQuantity').value.trim().replace(/,/g, '')) || 0;
-                const physical = Number(document.getElementById('physicalQuantity').value.trim().replace(/,/g, '')) || 0;
-
-                const expected = startingBookQuantity + purchased - sold;
-                const variance = physical - expected;
-
-                document.getElementById('expected-book-quantity').textContent = formatNumber(expected);
-
-                const varianceDisplay = document.getElementById('audit-variance-display');
-                varianceDisplay.className = "inline-flex items-center text-sm font-semibold rounded-full px-2 py-1 ";
-
-                let text = 'متطابق';
-                let colorClass = 'bg-gray-200 text-gray-700';
-                let icon = 'check-circle';
-
-                if (variance > 0) {
-                    text = `زيادة بـ ${formatNumber(variance)}`;
-                    colorClass = 'bg-green-100 text-green-700';
-                    icon = 'trending-up';
-                } else if (variance < 0) {
-                    text = `عجز بـ ${formatNumber(Math.abs(variance))}`;
-                    colorClass = 'bg-red-100 text-red-700';
-                    icon = 'trending-down';
-                }
-
-                varianceDisplay.innerHTML = `<i data-lucide="${icon}" class="w-4 h-4 ml-1"></i> ${text}`;
-                varianceDisplay.classList.add(...colorClass.split(' '));
-                if (typeof lucide !== 'undefined') { lucide.createIcons(); }
-            };
-
             const modalHtml = `
                 <div id="audit-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50" dir="rtl">
                     <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all scale-100">
-                        <div class="p-6 border-b flex justify-between items-center bg-blue-50">
-                            <h2 class="text-2xl font-bold text-blue-700 flex items-center">
-                                <i data-lucide="scale" class="w-5 h-5 ml-2"></i>
-                                جرد ومطابقة صنف: ${currentItem.name}
+                        <div class="p-6 border-b flex justify-between items-center bg-indigo-50">
+                            <h2 class="text-2xl font-bold text-indigo-700 flex items-center">
+                                <i data-lucide="scale" class="w-5 h-5 ml-2"></i> جرد ومطابقة صنف: ${currentItem.name}
                             </h2>
-                            <button onclick="closeModal('audit-modal')" class="text-gray-400 hover:text-gray-600" aria-label="إغلاق">
+                            <button onclick="window.closeModal('audit-modal')" class="text-gray-400 hover:text-gray-600" aria-label="إغلاق">
                                 <i data-lucide="x" class="w-6 h-6"></i>
                             </button>
                         </div>
-
-                        <form id="audit-form" class="p-6 space-y-4">
+                        <form id="audit-form" class="p-6 space-y-4" data-item-id="${itemId}">
                             <p class="text-gray-700 p-3 bg-gray-50 rounded-lg border border-gray-200">
                                 الرصيد الدفتري المسجل قبل الحركات: <span class="font-bold text-lg text-indigo-700">${formatNumber(startingBookQuantity)} وحدة</span>
                             </p>
-
                             <div class="flex space-x-4 space-x-reverse">
-                                ${renderInput('كمية الشراء (الكمية الواردة)', 'purchasedQuantity', '0', 'text', 'arrow-up-circle', 'w-1/2', null)}
-                                ${renderInput('الكمية المباعة (الكمية الصادرة)', 'soldQuantity', '0', 'text', 'arrow-down-circle', 'w-1/2', null)}
+                                ${renderInput('كمية الشراء (الكمية الواردة)', 'purchasedQuantity', '0', 'tel', 'arrow-up-circle', 'w-1/2', null)}
+                                ${renderInput('الكمية المباعة (الكمية الصادرة)', 'soldQuantity', '0', 'tel', 'arrow-down-circle', 'w-1/2', null)}
                             </div>
-
-                            ${renderInput('الرصيد الفعلي (الكمية المعدودة)', 'physicalQuantity', currentItem.quantity, 'text', 'box', '', null)}
-
+                            ${renderInput('الرصيد الفعلي (الكمية المعدودة)', 'physicalQuantity', currentItem.quantity, 'tel', 'box', '', null)}
                             ${renderInput('تاريخ إجراء الجرد', 'lastAuditDate', currentItem.lastAuditDate || today, 'date', 'calendar')}
-
                             <div class="p-3 rounded-lg border border-gray-300 space-y-2">
                                 <p class="text-gray-700">الرصيد الدفتري المتوقع: <span id="expected-book-quantity" class="font-bold text-lg text-indigo-700">${formatNumber(startingBookQuantity)}</span></p>
                                 <p class="text-gray-700">حالة المطابقة (العجز/الزيادة):</p>
-                                <span id="audit-variance-display" class="inline-flex items-center text-sm font-semibold rounded-full px-2 py-1 bg-gray-200 text-gray-700">
-                                    <i data-lucide="check-circle" class="w-4 h-4 ml-1"></i> متطابق
+                                <span id="audit-variance-display" class="inline-flex items-center text-sm font-semibold rounded-full px-2 py-1 bg-gray-200 text-gray-800">
+                                    0
                                 </span>
                             </div>
 
@@ -1004,9 +1077,10 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
                                 <button
                                     type="submit"
                                     id="audit-submit-button"
-                                    class="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition duration-150 shadow-md flex items-center"
+                                    class="px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition duration-150 shadow-md flex items-center"
                                 >
-                                    تأكيد الجرد وتصحيح الرصيد
+                                    <i data-lucide="check-circle" class="w-5 h-5 ml-2"></i>
+                                    تطبيق الجرد وتحديث الرصيد
                                 </button>
                             </div>
                         </form>
@@ -1015,39 +1089,69 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
             `;
             openModal(modalHtml);
 
-            calculateInstantVariance();
+            const purchasedQuantityInput = document.getElementById('purchasedQuantity');
+            const soldQuantityInput = document.getElementById('soldQuantity');
+            const physicalQuantityInput = document.getElementById('physicalQuantity');
 
-            document.getElementById('purchasedQuantity').addEventListener('input', calculateInstantVariance);
-            document.getElementById('soldQuantity').addEventListener('input', calculateInstantVariance);
-            document.getElementById('physicalQuantity').addEventListener('input', calculateInstantVariance);
+            const updateAuditDisplay = () => {
+                const purchased = cleanNumberValue(purchasedQuantityInput.value);
+                const sold = cleanNumberValue(soldQuantityInput.value);
+                const physical = cleanNumberValue(physicalQuantityInput.value);
+
+                const expected = startingBookQuantity + purchased - sold;
+                const variance = physical - expected;
+
+                document.getElementById('expected-book-quantity').textContent = formatNumber(expected);
+
+                const varianceDisplay = document.getElementById('audit-variance-display');
+                let varianceText = formatNumber(Math.abs(variance));
+                let varianceClass = 'bg-gray-200 text-gray-800';
+
+                if (variance > 0) {
+                    varianceText = `زيادة: +${varianceText}`;
+                    varianceClass = 'bg-green-100 text-green-700';
+                } else if (variance < 0) {
+                    varianceText = `عجز: -${varianceText}`;
+                    varianceClass = 'bg-red-100 text-red-700';
+                } else {
+                    varianceText = 'مطابق (0)';
+                }
+
+                varianceDisplay.className = `inline-flex items-center text-sm font-semibold rounded-full px-2 py-1 ${varianceClass}`;
+                varianceDisplay.textContent = varianceText;
+            };
+
+            [purchasedQuantityInput, soldQuantityInput, physicalQuantityInput].forEach(input => {
+                input.addEventListener('input', updateAuditDisplay);
+            });
 
             document.getElementById('audit-form').onsubmit = handleAuditSubmit;
+            updateAuditDisplay(); // تهيئة العرض
         };
 
         const handleAuditSubmit = async (e) => {
             e.preventDefault();
             const form = e.target;
+            const itemId = form.dataset.itemId;
             const submitButton = document.getElementById('audit-submit-button');
 
-            // 💡 معالجة المدخلات: إزالة فواصل الآلاف (,) ثم تحويلها إلى رقم
-            const purchasedValue = form.purchasedQuantity.value.trim().replace(/,/g, '');
-            const soldValue = form.soldQuantity.value.trim().replace(/,/g, '');
-            const physicalValue = form.physicalQuantity.value.trim().replace(/,/g, '');
+            const purchased = cleanNumberValue(form.purchasedQuantity.value);
+            const sold = cleanNumberValue(form.soldQuantity.value);
+            const physical = cleanNumberNumber(form.physicalQuantity.value);
+            const lastAuditDate = form.lastAuditDate.value || null;
 
-            const purchased = Number(purchasedValue) || 0;
-            const sold = Number(soldValue) || 0;
-            const physicalQuantity = Number(physicalValue) || 0;
+            const currentItemData = inventory.find(i => i.id === itemId);
+            if (!currentItemData) return;
 
-            const lastAuditDate = form.lastAuditDate.value;
-            const startingBookQuantity = currentItem.quantity;
+            const startingBookQuantity = currentItemData.quantity;
+            const expected = startingBookQuantity + purchased - sold;
+            const variance = physical - expected;
 
-            if (isNaN(physicalQuantity) || isNaN(purchased) || isNaN(sold)) {
-                alert('الرجاء إدخال كميات صحيحة (أرقام).');
-                return;
-            }
-
-            const expectedBookQuantity = startingBookQuantity + purchased - sold;
-            const variance = physicalQuantity - expectedBookQuantity;
+            const updateData = {
+                quantity: physical,
+                lastAuditDate: lastAuditDate,
+                updatedAt: new Date().toISOString()
+            };
 
             submitButton.disabled = true;
             submitButton.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 ml-2 animate-spin"></i> جاري تحديث الجرد...`;
@@ -1055,34 +1159,85 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
 
             try {
                 const collectionRef = getInventoryCollectionRef();
-
-                await updateDoc(doc(collectionRef, currentItem.id), {
-                    quantity: physicalQuantity,
-                    lastAuditDate: lastAuditDate,
-                    updatedAt: new Date().toISOString(),
-
-                    lastAuditDetails: {
-                        date: lastAuditDate,
-                        startingQuantity: startingBookQuantity,
-                        purchased: purchased,
-                        sold: sold,
-                        expected: expectedBookQuantity,
-                        physical: physicalQuantity,
-                        variance: variance,
-                    }
-                });
-                closeModal('audit-modal');
+                await updateDoc(doc(collectionRef, itemId), updateData);
+                window.closeModal('audit-modal');
+                alert(`تم تحديث رصيد الصنف بنجاح. الرصيد الفعلي الجديد: ${formatNumber(physical)}. الفرق (العجز/الزيادة): ${formatNumber(variance)}.`);
             } catch (e) {
-                console.error("Audit Update Error:", e);
-                alert(`فشل تحديث الجرد: ${e.message}`);
+                console.error("Firestore Audit Error:", e);
+                alert(`فشل تطبيق الجرد: ${e.message}`);
             } finally {
                 submitButton.disabled = false;
-                submitButton.textContent = 'تأكيد الجرد وتصحيح الرصيد';
+                submitButton.textContent = 'تطبيق الجرد وتحديث الرصيد';
                 if (typeof lucide !== 'undefined') { lucide.createIcons(); }
             }
         };
 
-        // --- Rendering Logic & Event Listeners (لم تتغير) ---
+        // --- Rendering & Event Listeners ---
+
+        // دالة جديدة لحساب إجمالي القيمة (التكلفة والجمهور)
+        const calculateTotalValues = () => {
+            let totalCostValue = 0;
+            let totalPublicValue = 0;
+
+            inventory.forEach(item => {
+                const quantity = Number(item.quantity) || 0;
+                const costPrice = Number(item.costPrice) || 0;
+                const publicPrice = Number(item.publicPrice) || 0;
+
+                totalCostValue += quantity * costPrice;
+                totalPublicValue += quantity * publicPrice;
+            });
+
+            return { totalCostValue, totalPublicValue };
+        };
+
+        const renderStats = () => {
+            const totalItems = inventory.length;
+            const lowStockCount = inventory.filter(i => i.quantity <= i.minQuantity).length;
+            const expiredCount = inventory.filter(i => i.expiryDate && new Date(i.expiryDate) < new Date()).length;
+            const nearExpiryCount = inventory.filter(i => i.expiryDate && new Date(i.expiryDate) < new Date(new Date().setMonth(new Date().getMonth() + 3)) && new Date(i.expiryDate) >= new Date()).length;
+            const goodStockCount = totalItems - lowStockCount - expiredCount - nearExpiryCount;
+
+            const { totalCostValue, totalPublicValue } = calculateTotalValues();
+
+            document.getElementById('total-items-count').textContent = formatNumber(totalItems);
+            document.getElementById('low-stock-count').textContent = formatNumber(lowStockCount);
+            document.getElementById('expired-count').textContent = formatNumber(expiredCount);
+            document.getElementById('near-expiry-count').textContent = formatNumber(nearExpiryCount);
+            document.getElementById('good-stock-count').textContent = formatNumber(goodStockCount);
+            // تحديث القيم الجديدة
+            document.getElementById('total-cost-value').textContent = formatNumber(totalCostValue);
+            document.getElementById('total-public-value').textContent = formatNumber(totalPublicValue);
+        };
+
+        const renderCategoryFilter = () => {
+            const container = document.getElementById('category-filter-container');
+            const categoriesHtml = ['الكل', 'كمية منخفضة', 'منتهي الصلاحية', 'قرب الانتهاء', ...inventoryCategories].map(cat => {
+                const isActive = currentFilter.category === cat;
+                return `
+                    <button data-category="${cat}" class="px-3 py-1 text-sm rounded-full transition ${isActive ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}" >
+                        ${cat}
+                    </button>
+                `;
+            }).join('');
+
+            container.innerHTML = categoriesHtml;
+            // إعادة ربط حدث النقر
+            container.querySelectorAll('button').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    let category = e.currentTarget.dataset.category;
+                    currentFilter.query = ''; // مسح البحث عند التصفية بالفئة
+                    document.getElementById('search-input').value = '';
+
+                    // إعادة تعيين الفلتر لتجنب تكرار الكود
+                    currentFilter.category = category;
+
+                    // يتم التعامل مع الحالات الخاصة (الكمية المنخفضة والمنتهية) داخل renderApp/filterInventory
+                    renderApp();
+
+                });
+            });
+        };
 
         const renderInventoryRow = (item) => {
             const isLow = item.quantity <= item.minQuantity;
@@ -1110,187 +1265,143 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
             const getExpiryDisplay = (dateStr) => {
                 if (!dateStr) return 'غير محدد';
                 const date = new Date(dateStr);
+                // تحقق من صلاحية التاريخ (قد تكون القراءة من الملف لا تزال غير صحيحة)
+                if (isNaN(date.getTime())) return 'خطأ في التاريخ';
+
                 return date.toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
             };
 
+            // حساب القيمة
+            const totalCost = (item.quantity * item.costPrice);
+            const totalPublic = (item.quantity * item.publicPrice);
+
             return `
-        <tr class="hover:bg-gray-50 transition duration-150 border-b border-gray-200">
-            <td data-label="اسم الصنف" class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${item.name}</td>
-            <td data-label="الفئة" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.category}</td>
-            <td data-label="الكمية" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-bold">${formatNumber(item.quantity)}</td>
-            <td data-label="تاريخ الانتهاء" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${getExpiryDisplay(item.expiryDate)}</td>
-            <td data-label="الحالة" class="px-6 py-4 whitespace-nowrap">
-                <span class="inline-flex items-center px-3 py-0.5 rounded-full text-xs font-medium ${statusColor}">
-                    <i data-lucide="${statusIcon}" class="w-4 h-4 ml-1"></i>
-                    ${statusText}
-                </span>
-            </td>
-            <td data-label="الإجراءات" class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                <div class="flex space-x-2 space-x-reverse justify-end">
-                    <button onclick="openAuditModal('${item.id}')" class="text-blue-600 hover:text-blue-900 transition flex items-center p-1 rounded-full hover:bg-blue-50" title="جرد">
-                        <i data-lucide="scale" class="w-5 h-5"></i>
-                    </button>
-                    <button onclick="openAddEditModal('${item.id}')" class="text-indigo-600 hover:text-indigo-900 transition flex items-center p-1 rounded-full hover:bg-indigo-50" title="تعديل">
-                        <i data-lucide="pencil" class="w-5 h-5"></i>
-                    </button>
-                    <button onclick="openConfirmModal('${item.id}')" class="text-red-600 hover:text-red-900 transition flex items-center p-1 rounded-full hover:bg-red-50" title="حذف">
-                        <i data-lucide="trash-2" class="w-5 h-5"></i>
-                    </button>
-                </div>
-            </td>
-        </tr>
-    `;
+                <tr class="hover:bg-gray-50 transition duration-150 border-b border-gray-200">
+                    <td data-label="اسم الصنف" class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        ${item.name}
+                        <p class="text-xs text-gray-500 font-mono mt-1">#${item.code}</p>
+                    </td>
+                    <td data-label="الفئة" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.category}</td>
+                    <td data-label="الكمية" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-bold">${formatNumber(item.quantity)}</td>
+                    <td data-label="تاريخ الانتهاء" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        ${getExpiryDisplay(item.expiryDate)}
+                    </td>
+                    
+                    <td data-label="التكلفة/الجمهور" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <span class="block text-xs text-indigo-700 font-semibold">ت: ${formatNumber(item.costPrice)}</span>
+                        <span class="block text-xs text-green-700 font-semibold">ج: ${formatNumber(item.publicPrice)}</span>
+                    </td>
+                    <td data-label="إجمالي القيمة" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <span class="block text-xs text-indigo-700 font-semibold">ت: ${formatNumber(totalCost)}</span>
+                        <span class="block text-xs text-green-700 font-semibold">ج: ${formatNumber(totalPublic)}</span>
+                    </td>
+
+                    <td data-label="الحالة" class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColor} flex items-center">
+                            <i data-lucide="${statusIcon}" class="w-4 h-4 ml-1"></i>
+                            ${statusText}
+                        </span>
+                    </td>
+
+                    <td data-label="الإجراءات" class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <div class="flex space-x-2 space-x-reverse justify-end">
+                            <button onclick="window.openAddEditModal('${item.id}')" title="تعديل"
+                                class="text-indigo-600 hover:text-indigo-900 p-1 rounded-full hover:bg-indigo-100 transition">
+                                <i data-lucide="square-pen" class="w-5 h-5"></i>
+                            </button>
+                            <button onclick="window.openAuditModal('${item.id}')" title="جرد ومطابقة"
+                                class="text-green-600 hover:text-green-900 p-1 rounded-full hover:bg-green-100 transition">
+                                <i data-lucide="scale" class="w-5 h-5"></i>
+                            </button>
+                            <button onclick="window.openDeleteConfirmModal('${item.id}')" title="حذف"
+                                class="text-red-600 hover:text-red-900 p-1 rounded-full hover:bg-red-100 transition">
+                                <i data-lucide="trash-2" class="w-5 h-5"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `;
         };
 
-        const renderInventoryTable = (items) => {
-            const tbody = document.getElementById('inventory-tbody');
-            if (!tbody) return;
+        const renderApp = () => {
+            renderStats();
+            renderCategoryFilter();
 
-            if (items.length === 0) {
-                tbody.innerHTML = `
-            <tr>
-                <td colspan="6" class="px-6 py-10 text-center text-gray-500 text-lg">
-                    <i data-lucide="box" class="w-8 h-8 mx-auto mb-2"></i>
-                    لا يوجد أصناف مطابقة لفلتر البحث.
-                </td>
-            </tr>
-        `;
+            let itemsToDisplay = [...inventory];
+
+            // تطبيق فلاتر الحالات الخاصة
+            if (currentFilter.category === 'كمية منخفضة') {
+                itemsToDisplay = inventory.filter(i => i.quantity <= i.minQuantity);
+            } else if (currentFilter.category === 'منتهي الصلاحية') {
+                itemsToDisplay = inventory.filter(i => i.expiryDate && new Date(i.expiryDate) < new Date());
+            } else if (currentFilter.category === 'قرب الانتهاء') {
+                itemsToDisplay = inventory.filter(i => i.expiryDate && new Date(i.expiryDate) < new Date(new Date().setMonth(new Date().getMonth() + 3)) && new Date(i.expiryDate) >= new Date());
             } else {
-                tbody.innerHTML = items.map(renderInventoryRow).join('');
+                itemsToDisplay = filterInventory(itemsToDisplay);
             }
+
+
+            const tableBody = document.getElementById('inventory-tbody');
+            tableBody.innerHTML = itemsToDisplay.map(renderInventoryRow).join('');
+
+            // تحديث رموز Lucide
             if (typeof lucide !== 'undefined') { lucide.createIcons(); }
         };
 
-        const renderSummaryCards = (items) => {
-            const totalItems = items.length;
-            const lowStockCount = items.filter(i => i.quantity <= i.minQuantity).length;
-            const expiredCount = items.filter(i => i.expiryDate && new Date(i.expiryDate) < new Date()).length;
-            const nearExpiryCount = items.filter(i => i.expiryDate && new Date(i.expiryDate) < new Date(new Date().setMonth(new Date().getMonth() + 3)) && new Date(i.expiryDate) >= new Date()).length;
-            const goodStockCount = totalItems - lowStockCount - expiredCount - nearExpiryCount;
+        const setupEventListeners = () => {
+            document.getElementById('add-item-button').addEventListener('click', () => window.openAddEditModal()); // تم تعديل الاستدعاء هنا أيضاً
+            document.getElementById('import-file-button').addEventListener('click', openImportModal);
 
-            document.getElementById('total-items-count').textContent = formatNumber(totalItems);
-            document.getElementById('low-stock-count').textContent = formatNumber(lowStockCount);
-            document.getElementById('expired-count').textContent = formatNumber(expiredCount);
-            document.getElementById('good-stock-count').textContent = formatNumber(goodStockCount);
-        };
+            document.getElementById('search-input').addEventListener('input', (e) => {
+                currentFilter.query = e.target.value;
+                currentFilter.category = 'الكل'; // مسح الفلترة بالفئة عند البحث
+                renderApp();
+            });
 
-        const renderCategoryFilter = () => {
-            const container = document.getElementById('category-filter-container');
-            const categoriesHtml = ['الكل', 'كمية منخفضة', 'منتهي الصلاحية', ...inventoryCategories].map(cat => {
-                const isActive = currentFilter.category === cat;
-                return `
-                    <button
-                        data-category="${cat}"
-                        class="px-3 py-1 text-sm rounded-full transition ${isActive ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}"
-                    >
-                        ${cat}
-                    </button>
-                `;
-            }).join('');
-            container.innerHTML = categoriesHtml;
-
-            // إعادة ربط حدث النقر
-            container.querySelectorAll('button').forEach(button => {
-                button.addEventListener('click', (e) => {
-                    let category = e.currentTarget.dataset.category;
-
-                    currentFilter.query = ''; // مسح البحث عند التصفية بالفئة
-                    document.getElementById('search-input').value = '';
-
-                    if (category === 'كمية منخفضة') {
-                        currentFilter.category = 'كمية منخفضة';
-                        renderApp(true);
-                    } else if (category === 'منتهي الصلاحية') {
-                        currentFilter.category = 'منتهي الصلاحية';
-                        renderApp(true);
-                    } else {
-                        currentFilter.category = category;
-                        renderApp();
-                    }
+            // ربط أحداث النقر بالفرز على رؤوس الأعمدة
+            document.querySelectorAll('th[data-sort]').forEach(header => {
+                header.addEventListener('click', (e) => {
+                    const column = e.currentTarget.dataset.sort;
+                    handleSortChange(column);
                 });
             });
+
+            // بدء المصادقة
+            authenticateAndStart();
         };
 
-        const renderApp = (overrideFilter = false) => {
-            let itemsToDisplay = [...inventory];
-
-            if (overrideFilter || currentFilter.category === 'كمية منخفضة') {
-                itemsToDisplay = inventory.filter(i => i.quantity <= i.minQuantity);
-            } else if (overrideFilter || currentFilter.category === 'منتهي الصلاحية') {
-                itemsToDisplay = inventory.filter(i => i.expiryDate && new Date(i.expiryDate) < new Date());
-            } else {
-                itemsToDisplay = filterInventory(inventory);
-            }
-
-
-            renderSummaryCards(inventory);
-            renderInventoryTable(itemsToDisplay);
-            renderCategoryFilter();
-            document.getElementById('search-input').value = currentFilter.query;
-            document.getElementById('inventory-count-display').textContent = formatNumber(itemsToDisplay.length);
-        };
-
-        // ----------------------------------------------------------------------------------
-        // ** الأحداث الرئيسية **
-        // ----------------------------------------------------------------------------------
-
-        // تشغيل المصادقة وبدء المستمع بعد تحميل الصفحة
-        window.addEventListener('load', authenticateAndStart);
-
-        // ربط الأحداث العامة
-        window.openAddEditModal = openAddEditModal;
-        window.closeModal = closeModal;
-        window.openConfirmModal = openConfirmModal;
-        window.openAuditModal = openAuditModal;
-        window.openImportModal = openImportModal; // ربط دالة الاستيراد
-
-        // حدث البحث
-        document.getElementById('search-input').addEventListener('input', (e) => {
-            currentFilter.query = e.target.value.trim();
-            currentFilter.category = 'الكل'; // مسح الفلتر عند البحث
-            filterAndSort();
-        });
-
-        // حدث النقر على رأس الجدول للفرز
-        document.querySelectorAll('[data-sort]').forEach(header => {
-            header.addEventListener('click', (e) => {
-                const column = e.currentTarget.dataset.sort;
-                handleSortChange(column);
-            });
-        });
-
-        // ربط دالة الإضافة بزر "إضافة صنف جديد"
-        document.getElementById('add-item-button').addEventListener('click', () => openAddEditModal());
-
-        // ربط دالة الاستيراد بزر "استيراد ملف حركة"
-        document.getElementById('import-file-button').addEventListener('click', () => openImportModal());
-
+        document.addEventListener('DOMContentLoaded', setupEventListeners);
     </script>
 </head>
 
-<body class="bg-gray-100">
-    <div id="loading-state" class="fixed inset-0 bg-gray-900 bg-opacity-90 flex flex-col items-center justify-center z-50">
-        <i data-lucide="loader-2" class="w-12 h-12 text-indigo-400 animate-spin mb-4"></i>
-        <p class="text-white text-lg">جاري تحميل البيانات...</p>
-        <div id="data-error-message" class="mt-4 w-full max-w-lg"></div>
+<body>
+    <div id="loading-state" class="fixed inset-0 bg-white bg-opacity-90 flex items-center justify-center z-[100] hidden"
+        dir="ltr">
+        <div class="text-center">
+            <svg class="animate-spin h-10 w-10 text-indigo-600 mx-auto mb-3" xmlns="http://www.w3.org/2000/svg"
+                fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                </path>
+            </svg>
+            <p class="text-lg text-gray-700 font-semibold">جاري تحميل البيانات...</p>
+        </div>
     </div>
 
-    <header class="bg-white shadow-sm sticky top-0 z-40">
+    <header class="bg-white shadow-md">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
             <h1 class="text-3xl font-bold text-indigo-700 flex items-center">
-                <i data-lucide="home" class="w-6 h-6 ml-2"></i>
-                لوحة تحكم المخزون
+                <i data-lucide="home" class="w-6 h-6 ml-2"></i> لوحة تحكم المخزون
             </h1>
             <div class="flex space-x-4 space-x-reverse">
                 <button id="import-file-button"
                     class="px-4 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition duration-150 shadow-md flex items-center">
-                    <i data-lucide="upload" class="w-5 h-5 ml-2"></i>
-                    استيراد ملف حركة
+                    <i data-lucide="upload" class="w-5 h-5 ml-2"></i> استيراد ملف حركة
                 </button>
                 <button id="add-item-button"
                     class="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition duration-150 shadow-md flex items-center">
-                    <i data-lucide="plus" class="w-5 h-5 ml-2"></i>
-                    إضافة صنف جديد
+                    <i data-lucide="plus" class="w-5 h-5 ml-2"></i> إضافة صنف جديد
                 </button>
             </div>
         </div>
@@ -1298,76 +1409,72 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
 
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div id="data-error-message"></div>
 
-            <div class="bg-white rounded-xl shadow-lg p-5 border-t-4 border-indigo-500">
-                <div class="flex items-center">
-                    <div class="p-3 rounded-full bg-indigo-100 text-indigo-600">
-                        <i data-lucide="list-checks" class="w-6 h-6"></i>
-                    </div>
-                    <div class="mr-4">
-                        <p class="text-sm font-medium text-gray-500">إجمالي الأصناف</p>
-                        <p id="total-items-count" class="text-2xl font-bold text-gray-900">0</p>
-                    </div>
+        <section id="stats-section" class="mb-8">
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4">
+
+                <div class="bg-blue-50 p-4 rounded-lg shadow-sm flex flex-col items-center">
+                    <i data-lucide="package" class="w-6 h-6 text-blue-600 mb-1"></i>
+                    <p class="text-xs font-medium text-gray-500">إجمالي الأصناف</p>
+                    <p id="total-items-count" class="text-xl font-bold text-blue-700 mt-1">0</p>
                 </div>
-            </div>
 
-            <div class="bg-white rounded-xl shadow-lg p-5 border-t-4 border-green-500">
-                <div class="flex items-center">
-                    <div class="p-3 rounded-full bg-green-100 text-green-600">
-                        <i data-lucide="check-circle" class="w-6 h-6"></i>
-                    </div>
-                    <div class="mr-4">
-                        <p class="text-sm font-medium text-gray-500">أصناف متوفرة</p>
-                        <p id="good-stock-count" class="text-2xl font-bold text-gray-900">0</p>
-                    </div>
+                <div class="bg-red-50 p-4 rounded-lg shadow-sm flex flex-col items-center">
+                    <i data-lucide="alert-triangle" class="w-6 h-6 text-red-600 mb-1"></i>
+                    <p class="text-xs font-medium text-gray-500">كمية منخفضة</p>
+                    <p id="low-stock-count" class="text-xl font-bold text-red-700 mt-1">0</p>
                 </div>
-            </div>
 
-            <div class="bg-white rounded-xl shadow-lg p-5 border-t-4 border-red-500">
-                <div class="flex items-center">
-                    <div class="p-3 rounded-full bg-red-100 text-red-600">
-                        <i data-lucide="alert-triangle" class="w-6 h-6"></i>
-                    </div>
-                    <div class="mr-4">
-                        <p class="text-sm font-medium text-gray-500">كمية منخفضة</p>
-                        <p id="low-stock-count" class="text-2xl font-bold text-gray-900">0</p>
-                    </div>
+                <div class="bg-red-50 p-4 rounded-lg shadow-sm flex flex-col items-center">
+                    <i data-lucide="skull" class="w-6 h-6 text-red-600 mb-1"></i>
+                    <p class="text-xs font-medium text-gray-500">منتهي الصلاحية</p>
+                    <p id="expired-count" class="text-xl font-bold text-red-700 mt-1">0</p>
                 </div>
-            </div>
 
-            <div class="bg-white rounded-xl shadow-lg p-5 border-t-4 border-yellow-500">
-                <div class="flex items-center">
-                    <div class="p-3 rounded-full bg-yellow-100 text-yellow-600">
-                        <i data-lucide="skull" class="w-6 h-6"></i>
-                    </div>
-                    <div class="mr-4">
-                        <p class="text-sm font-medium text-gray-500">منتهي الصلاحية</p>
-                        <p id="expired-count" class="text-2xl font-bold text-gray-900">0</p>
-                    </div>
+                <div class="bg-yellow-50 p-4 rounded-lg shadow-sm flex flex-col items-center">
+                    <i data-lucide="clock" class="w-6 h-6 text-yellow-600 mb-1"></i>
+                    <p class="text-xs font-medium text-gray-500">قرب الانتهاء</p>
+                    <p id="near-expiry-count" class="text-xl font-bold text-yellow-700 mt-1">0</p>
                 </div>
+
+                <div class="bg-green-50 p-4 rounded-lg shadow-sm flex flex-col items-center">
+                    <i data-lucide="check-circle" class="w-6 h-6 text-green-600 mb-1"></i>
+                    <p class="text-xs font-medium text-gray-500">كمية جيدة</p>
+                    <p id="good-stock-count" class="text-xl font-bold text-green-700 mt-1">0</p>
+                </div>
+
+                <div class="bg-indigo-50 p-4 rounded-lg shadow-sm flex flex-col items-center">
+                    <i data-lucide="building-2" class="w-6 h-6 text-indigo-600 mb-1"></i>
+                    <p class="text-xs font-medium text-gray-500">إجمالي قيمة التكلفة</p>
+                    <p id="total-cost-value" class="text-xl font-bold text-indigo-700 mt-1">0</p>
+                </div>
+
+                <div class="bg-lime-50 p-4 rounded-lg shadow-sm flex flex-col items-center">
+                    <i data-lucide="dollar-sign" class="w-6 h-6 text-lime-600 mb-1"></i>
+                    <p class="text-xs font-medium text-gray-500">إجمالي قيمة الجمهور</p>
+                    <p id="total-public-value" class="text-xl font-bold text-lime-700 mt-1">0</p>
+                </div>
+
             </div>
+        </section>
 
-        </div>
-
-        <div class="bg-white shadow-xl rounded-xl overflow-hidden">
-            <div class="p-4 border-b border-gray-200 sm:p-6">
-                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center">
-                    <h2 class="text-xl font-bold text-gray-900 mb-3 sm:mb-0 flex items-center">
-                        المخزون الحالي
-                        <span id="inventory-count-display"
-                            class="mr-2 px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-sm font-semibold">0</span>
-                    </h2>
-                    <div class="w-full sm:w-64 relative rounded-md shadow-sm">
-                        <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
+        <div class="bg-white shadow-lg rounded-lg p-6 mb-8">
+            <div class="flex flex-wrap items-center justify-between mb-4 -mx-2">
+                <div class="px-2 w-full md:w-1/3 order-2 md:order-1 mb-4 md:mb-0">
+                    <div class="relative">
+                        <input type="text" id="search-input" placeholder="البحث باسم الصنف أو الكود أو الفئة..."
+                            class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2 text-right focus:border-indigo-500 focus:ring-indigo-500 text-sm"
+                            dir="rtl">
+                        <div
+                            class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
                             <i data-lucide="search" class="w-5 h-5"></i>
                         </div>
-                        <input type="text" id="search-input" placeholder="البحث باسم الصنف أو الفئة..."
-                            class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2 text-right focus:border-indigo-500 focus:ring-indigo-500 text-sm">
                     </div>
                 </div>
-                <div id="category-filter-container" class="mt-4 flex flex-wrap gap-2">
-                    </div>
+                <div id="category-filter-container"
+                    class="px-2 w-full md:w-2/3 order-1 md:order-2 flex flex-wrap gap-2 justify-start md:justify-end">
+                </div>
             </div>
 
             <div class="overflow-x-auto">
@@ -1376,7 +1483,7 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
                         <tr>
                             <th scope="col" data-sort="name"
                                 class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition">
-                                اسم الصنف <i data-lucide="arrow-down-up" class="w-3 h-3 inline"></i>
+                                اسم الصنف
                             </th>
                             <th scope="col" data-sort="category"
                                 class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition">
@@ -1392,6 +1499,14 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
                             </th>
                             <th scope="col"
                                 class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                التكلفة/الجمهور
+                            </th>
+                            <th scope="col"
+                                class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                إجمالي القيمة
+                            </th>
+                            <th scope="col"
+                                class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 الحالة
                             </th>
                             <th scope="col"
@@ -1401,7 +1516,7 @@ const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = ''
                         </tr>
                     </thead>
                     <tbody id="inventory-tbody" class="bg-white divide-y divide-gray-200">
-                        </tbody>
+                    </tbody>
                 </table>
             </div>
         </div>

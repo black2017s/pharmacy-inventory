@@ -559,7 +559,7 @@
                             
                             <div>
                                 <label for="fileInput" class="block text-sm font-medium text-gray-700 mb-1">تحميل ملف Excel (.xlsx, .csv)</label>
-                                <input type="file" id="fileInput" name="fileInput" accept=".xlsx, .xls, .csv" required 
+                                <input type="file" id="fileInput" name="fileInput" accept=".xlsx, .xls, .csv" required multiple 
                                        class="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none p-2.5" />
                             </div>
 
@@ -603,110 +603,142 @@
             document.getElementById('import-mapping-form').onsubmit = handleImportSubmit;
         };
 
-        const handleFileLoad = (e) => {
+        // 💥 الدالة المعدلة لمعالجة ملفات متعددة (Handle Multiple Files)
+        const handleFileLoad = async (e) => {
             e.preventDefault();
-            const file = document.getElementById('fileInput').files[0];
+            const fileInput = document.getElementById('fileInput');
             const importType = document.getElementById('importType').value;
+            const files = fileInput.files; // 💡 جلب قائمة بجميع الملفات
 
-            if (!file || !importType) return;
+            if (files.length === 0 || !importType) return;
 
-            const reader = new FileReader();
-            reader.onload = function (e) {
-                const data = new Uint8Array(e.target.result);
-                const isCSV = file.name.endsWith('.csv');
-                // 1. قراءة الملف كـ array of arrays (للحفاظ على ترتيب الصفوف وتحسين قراءة التواريخ)
-                const workbook = XLSX.read(data, { type: 'array', raw: false, cellDates: true, dateNF: 'yyyy-mm-dd' });
+            let headers = [];
+            let combinedDataRows = [];
+            let firstFileParsed = false;
 
-                const sheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[sheetName];
+            // دالة مساعدة لـ قراءة محتوى ملف واحد وتحويله إلى JSON
+            const readFile = (file) => {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = function (e) {
+                        try {
+                            const data = new Uint8Array(e.target.result);
+                            // قراءة الملف كـ array of arrays (للحفاظ على ترتيب الصفوف وتحسين قراءة التواريخ)
+                            const workbook = XLSX.read(data, { type: 'array', raw: false, cellDates: true, dateNF: 'yyyy-mm-dd' });
+                            const sheetName = workbook.SheetNames[0];
+                            const worksheet = workbook.Sheets[sheetName];
+                            // الحصول على كامل البيانات كصفوف (بدون تحديد رأس تلقائي)
+                            const fullData = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
 
-                // الحصول على كامل البيانات كصفوف (بدون تحديد رأس تلقائي)
-                const fullData = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
-
-                if (!fullData || fullData.length === 0) {
-                    alert('الملف فارغ أو لا يحتوي على بيانات.');
-                    return;
-                }
-
-                let headerRowIndex = -1;
-                let dataRows = [];
-                let headers = [];
-
-                // 2. البحث عن صف الرؤوس الصحيح
-                // نستخدم أول 10 صفوف للبحث
-                for (let i = 0; i < Math.min(fullData.length, 10); i++) {
-                    const row = fullData[i];
-
-                    // 💥 التعديل الحاسم: استخدام دالة normalizeText لجعل البحث مرنًا
-                    const normalizedRowText = (row || [])
-                        .map(c => normalizeText(c))
-                        .join('|');
-
-                    // 🚀 البحث الشامل: فحص كل خلية في الصف بصيغة نظيفة لتحديد ما إذا كان يحتوي على حقل الكود
-                    const isCodeHeader = (row || []).some(cell => {
-                        if (!cell) return false;
-                        // تنظيف النص: إزالة المسافات، النقاط، الشرطات، وتحويل للحروف الصغيرة
-                        const cleanCell = String(cell).toLowerCase().replace(/[\s\.\-\_]/g, '');
-                        // البحث عن 'كود' أو 'كصنف' (ك.صنف) أو 'باركود' أو 'code' أو 'barcode'
-                        return cleanCell.includes('كود') || cleanCell.includes('كصنف') || cleanCell.includes('باركود') || cleanCell.includes('code') || cleanCell.includes('barcode');
-                    });
-
-                    if (importType === 'purchases' || importType === 'sales') {
-                        // يجب أن يحتوي على: كود و كمية
-                        const hasCode = isCodeHeader;
-                        const hasQuantity = normalizedRowText.includes('كمية') || normalizedRowText.includes('quantity');
-
-                        if (hasCode && hasQuantity) {
-                            headerRowIndex = i;
-                            break;
+                            resolve(fullData);
+                        } catch (error) {
+                            reject(error);
                         }
-                    } else if (importType === 'items') {
-                        // يجب أن يحتوي على: كود و اسم/صنف
-                        const hasCode = isCodeHeader;
-                        // نبحث عن (اسم) أو (صنف) أو (name)
-                        const hasName = normalizedRowText.includes('اسم') || normalizedRowText.includes('صنف') || normalizedRowText.includes('name');
+                    };
+                    reader.onerror = reject;
+                    reader.readAsArrayBuffer(file);
+                });
+            };
 
-                        if (hasCode && hasName) {
-                            headerRowIndex = i;
-                            break;
+            // 💡 المرور على كل ملف تم اختياره ومعالجته بشكل تسلسلي
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+
+                try {
+                    const fullData = await readFile(file); // قراءة الملف وانتظار الانتهاء
+
+                    if (!fullData || fullData.length === 0) {
+                        alert(`الملف رقم ${i + 1} (${file.name}) فارغ أو لا يحتوي على بيانات وتم تجاهله.`);
+                        continue;
+                    }
+
+                    let headerRowIndex = -1;
+                    let dataRows = [];
+
+                    // 2. البحث عن صف الرؤوس الصحيح (نفس منطق الدالة الأصلية)
+                    for (let j = 0; j < Math.min(fullData.length, 10); j++) {
+                        const row = fullData[j];
+
+                        const normalizedRowText = (row || [])
+                            .map(c => normalizeText(c))
+                            .join('|');
+
+                        const isCodeHeader = (row || []).some(cell => {
+                            if (!cell) return false;
+                            const cleanCell = String(cell).toLowerCase().replace(/[\s\.\-\_]/g, '');
+                            return cleanCell.includes('كود') || cleanCell.includes('كصنف') || cleanCell.includes('باركود') || cleanCell.includes('code') || cleanCell.includes('barcode');
+                        });
+
+                        if (importType === 'purchases' || importType === 'sales') {
+                            const hasCode = isCodeHeader;
+                            const hasQuantity = normalizedRowText.includes('كمية') || normalizedRowText.includes('quantity');
+
+                            if (hasCode && hasQuantity) {
+                                headerRowIndex = j;
+                                break;
+                            }
+                        } else if (importType === 'items') {
+                            const hasCode = isCodeHeader;
+                            const hasName = normalizedRowText.includes('اسم') || normalizedRowText.includes('صنف') || normalizedRowText.includes('name');
+
+                            if (hasCode && hasName) {
+                                headerRowIndex = j;
+                                break;
+                            }
                         }
                     }
+
+
+                    if (headerRowIndex !== -1) {
+                        const currentHeaders = fullData[headerRowIndex];
+                        // تنظيف الصفوف الفارغة وإزالتها
+                        dataRows = fullData.slice(headerRowIndex + 1).filter(row => row.some(cell => String(cell || '').trim() !== ''));
+
+                        // 🌟 استخدام رؤوس الملف الأول فقط لعملية المطابقة
+                        if (!firstFileParsed) {
+                            headers = currentHeaders.map(h => h?.toString().trim() || '---');
+                            firstFileParsed = true;
+                        }
+
+                        // 💡 دمج صفوف البيانات من هذا الملف إلى القائمة الكلية
+                        combinedDataRows.push(...dataRows);
+
+                    } else {
+                        const required = importType === 'items' ? 'الكود و (اسم صنف أو الاسم العربي)' : 'الكود و الكمية';
+                        alert(`لم يتم العثور على صف الرؤوس المتوقع في الملف رقم ${i + 1} (${file.name}). يرجى التأكد من احتواء أحد الصفوف على: ${required}.`);
+                        continue; // تخطي هذا الملف
+                    }
+
+                } catch (error) {
+                    console.error(`Error processing file ${file.name}:`, error);
+                    alert(`حدث خطأ أثناء معالجة الملف ${file.name}: ${error.message}`);
                 }
+            } // نهاية حلقة الملفات
 
-                // 3. تحديد الرؤوس والبيانات
-                if (headerRowIndex !== -1) {
-                    headers = fullData[headerRowIndex];
-                    dataRows = fullData.slice(headerRowIndex + 1);
-                } else {
-                    const required = importType === 'items' ? 'الكود و (اسم صنف أو الاسم العربي)' : 'الكود و الكمية';
-                    alert(`لم يتم العثور على صف الرؤوس المتوقع لنوع الملف (${importType}). يرجى التأكد من احتواء أحد الصفوف على: ${required}.`);
-                    return;
-                }
+            // 4. الفحص النهائي وتحديث الحالة العالمية
+            if (!firstFileParsed) {
+                alert('لم يتم العثور على أي ملف صالح للبدء بعملية المطابقة. يرجى اختيار ملف واحد على الأقل يحتوي على رؤوس صالحة.');
+                return;
+            }
 
-                // تنظيف الرؤوس وإزالة الصفوف الفارغة بالكامل
-                headers = headers.map(h => h?.toString().trim() || '---');
-                dataRows = dataRows.filter(row => row.some(cell => String(cell || '').trim() !== ''));
+            if (combinedDataRows.length === 0) {
+                alert('لم يتم العثور على أي صفوف بيانات صالحة من جميع الملفات المختارة.');
+                return;
+            }
 
-
-                if (dataRows.length === 0) {
-                    alert('لم يتم العثور على أي صفوف بيانات صالحة بعد العثور على الرؤوس.');
-                    return;
-                }
-
-                importedData = {
-                    type: importType,
-                    headers: headers,
-                    rows: dataRows
-                };
-
-                // عرض الخطوة 2
-                document.getElementById('import-step-1-form').classList.add('hidden');
-                document.getElementById('import-step-2').classList.remove('hidden');
-                document.getElementById('summary-rows-count').textContent = importedData.rows.length;
-
-                renderMappingFields();
+            // تحديث البيانات التي سيتم استخدامها في خطوة المطابقة التالية
+            importedData = {
+                type: importType,
+                headers: headers, // رؤوس الملف الأول الصالح (للمطابقة)
+                rows: combinedDataRows // جميع الصفوف المدمجة من كل الملفات الصالحة (للاستيراد)
             };
-            reader.readAsArrayBuffer(file);
+
+            // عرض الخطوة 2
+            document.getElementById('import-step-1-form').classList.add('hidden');
+            document.getElementById('import-step-2').classList.remove('hidden');
+            document.getElementById('summary-rows-count').textContent = importedData.rows.length;
+
+            renderMappingFields();
         };
 
         const renderMappingFields = () => {
@@ -980,7 +1012,7 @@
                     // الأولوية للاسم العربي، ثم الاسم الإنجليزي
                     transactionItemName = arabicName || englishName;
                 }
-                
+
 
                 // نتحقق إذا كان الصنف غير موجود في المخزون الحالي وتم إضافته من ملف مشتريات/مبيعات
                 if (!inventoryMap[itemCode] && (importType === 'purchases' || importType === 'sales')) {
@@ -993,28 +1025,28 @@
                     updateData.costPrice = updateData.costPrice || 0;
                 }
                 if (importType === 'purchases') {
-    
-    // يجب تحديد اسم الحقل في ملف الـ mapping بشكل صحيح
-    const publicPriceIndex = mapping.publicPrice; 
-    const costIndex = mapping.costPrice || mapping.purchasePrice; 
-    
-    // 1. قراءة القيم من الصف الحالي باستخدام مؤشرات الأعمدة
-    const publicPrice = cleanNumberValue(row[publicPriceIndex]); // قراءة سعر البيع
-    const costPrice = cleanNumberValue(row[costIndex]);          // قراءة سعر التكلفة
 
-    // 2. تحديث الأسعار في بيانات الصنف (updateData)
-    // نحدث فقط إذا كانت القيمة أكبر من الصفر
-    if (publicPrice > 0) {
-        updateData.publicPrice = publicPrice;
-    }
-    
-    if (costPrice > 0) {
-        updateData.costPrice = costPrice; 
-    }
-    
-    // 💡 ملاحظة: يجب أن يتبع هذا منطق تحديث الكمية وتاريخ الصلاحية هنا أيضًا
-    // (لأنك في ملف المشتريات)
-}
+                    // يجب تحديد اسم الحقل في ملف الـ mapping بشكل صحيح
+                    const publicPriceIndex = mapping.publicPrice;
+                    const costIndex = mapping.costPrice || mapping.purchasePrice;
+
+                    // 1. قراءة القيم من الصف الحالي باستخدام مؤشرات الأعمدة
+                    const publicPrice = cleanNumberValue(row[publicPriceIndex]); // قراءة سعر البيع
+                    const costPrice = cleanNumberValue(row[costIndex]);          // قراءة سعر التكلفة
+
+                    // 2. تحديث الأسعار في بيانات الصنف (updateData)
+                    // نحدث فقط إذا كانت القيمة أكبر من الصفر
+                    if (publicPrice > 0) {
+                        updateData.publicPrice = publicPrice;
+                    }
+
+                    if (costPrice > 0) {
+                        updateData.costPrice = costPrice;
+                    }
+
+                    // 💡 ملاحظة: يجب أن يتبع هذا منطق تحديث الكمية وتاريخ الصلاحية هنا أيضًا
+                    // (لأنك في ملف المشتريات)
+                }
             }
 
 

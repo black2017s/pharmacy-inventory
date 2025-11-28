@@ -85,9 +85,10 @@
 
     <script type="module">
         // ** Firebase Imports **
+        // 💥 التعديل الأول: إضافة getDocs لجلب كل الوثائق في المجموعة
+        import { getFirestore, collection, addDoc, onSnapshot, updateDoc, doc, deleteDoc, query, orderBy, writeBatch, getDocs, setDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, updateDoc, doc, deleteDoc, query, orderBy, writeBatch } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
+        import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
 
         // ----------------------------------------------------
         // ⚠️ الإعدادات الخاصة بـ Firebase - يجب التأكد من صحتها ⚠️
@@ -132,12 +133,13 @@
         ];
 
         // --- Firestore Helpers ---
+        // الكود الجديد (لبيانات مشتركة)
         const getInventoryCollectionRef = () => {
             const rawAppId = firebaseConfig.appId || 'default-inventory';
             const appId = rawAppId.replace(/[^a-zA-Z0-9_-]/g, '_');
-            return collection(db, `artifacts/${appId}/users/${userId}/inventory`);
+            // 🌟 المسار موحد الآن لكل المستخدمين ولا يعتمد على userId
+            return collection(db, `artifacts/${appId}/shared_inventory`);
         };
-
         // --- Utility Functions ---
 
         const formatNumber = (num) => new Intl.NumberFormat('ar-EG').format(num);
@@ -163,6 +165,29 @@
         };
 
         // --------------------------------------------------
+        // ** دالة formatDateValue لتنظيف التواريخ **
+        // --------------------------------------------------
+        const formatDateValue = (value) => {
+            if (!value) return null;
+            let date = String(value).trim();
+            // محاولة التعامل مع التواريخ التي تأتي من Excel كسلسلة ISO (yyyy-mm-dd) أو رقم
+            if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+                return date;
+            }
+            // إذا كان نصًا عامًا، محاولة تحويله إلى تاريخ صالح
+            try {
+                const d = new Date(date);
+                if (isNaN(d.getTime())) {
+                    // قد يكون تاريخًا بتنسيق مختلف، نتركه كما هو
+                    return date;
+                }
+                return d.toISOString().substring(0, 10);
+            } catch (e) {
+                return date; // الفشل في المعالجة
+            }
+        };
+
+        // --------------------------------------------------
         // ** دالة normalizeText (جديدة) لجعل البحث أكثر مرونة **
         // --------------------------------------------------
         const normalizeText = (text) => {
@@ -174,7 +199,7 @@
         };
 
         // --------------------------------------------------
-        // ** دالة renderInput المعدلة باستخدام type="tel" و inputmode="decimal" **
+        // ** دالة renderInput المعدلة **
         // --------------------------------------------------
         const renderInput = (label, id, value, type = 'text', icon = 'tag', classes = '', min = null) => {
 
@@ -214,7 +239,7 @@
                             ${extraAttributes}
                             onfocus="${type === 'date' ? `this.type='date'` : ''}"
                             onblur="${type === 'date' ? `if(!this.value) this.type='text'` : ''}"
-                            class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2 text-right focus:border-blue-500 focus:ring-blue-500 text-sm"
+                            class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2 text-right focus:border-teal-500 focus:ring-teal-500 text-sm"
                             dir="rtl"
                         >
                     </div>
@@ -223,7 +248,7 @@
         };
         // --------------------------------------------------
 
-        // 💥 التعديل هنا: جعل الدوال المستخدمة في 'onclick' عالمية (Global)
+        // 💥 جعل الدوال العالمية (Global)
         window.closeModal = (modalId) => {
             document.getElementById(modalId)?.remove();
             if (typeof lucide !== 'undefined') { lucide.createIcons(); }
@@ -234,35 +259,164 @@
             if (typeof lucide !== 'undefined') { lucide.createIcons(); }
         };
 
-        // --- Firebase Auth & Listener Functions (لم تتغير) ---
+        // --------------------------------------------------
+        // ** منطق تسجيل الدخول والمصادقة (Authentication Logic) **
+        // --------------------------------------------------
 
+        // 💥 الدالة الرئيسية لبدء التشغيل والمصادقة (محدثة)
         const authenticateAndStart = () => {
+            // إظهار شاشة التحميل
             document.getElementById('loading-state').style.display = 'flex';
 
             onAuthStateChanged(auth, (user) => {
+                // إخفاء شاشة التحميل
+                document.getElementById('loading-state').style.display = 'none';
+
                 if (user) {
+                    // المستخدم مسجل الدخول
                     userId = user.uid;
+                    document.getElementById('main-app').classList.remove('hidden');
+                    document.getElementById('login-page').classList.add('hidden');
                     setupRealtimeListener();
                 } else {
-                    signInAnonymously(auth).catch(error => {
-                        console.error("Authentication failed:", error);
-                        document.getElementById('data-error-message').innerHTML = `
-                                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4 flex items-center" role="alert">
-                                    <i data-lucide="alert-triangle" class="w-5 h-5 ml-2"></i>
-                                    <span>فشل المصادقة: ${error.message} (تحقق من إعدادات Firebase).</span>
-                                </div>
-                            `;
-                        document.getElementById('loading-state').style.display = 'none';
-                        if (typeof lucide !== 'undefined') { lucide.createIcons(); }
-                    });
+                    // المستخدم غير مسجل الدخول، إظهار شاشة الدخول
+                    userId = null;
+                    document.getElementById('main-app').classList.add('hidden');
+                    document.getElementById('login-page').classList.remove('hidden');
+                    // إظهار النموذج الافتراضي (تسجيل الدخول)
+                    window.toggleForm('login');
                 }
+                if (typeof lucide !== 'undefined') { lucide.createIcons(); }
             });
+        };
+
+        // 💥 دالة تسجيل الدخول
+        window.handleLogin = async (e) => {
+            e.preventDefault();
+            const form = document.getElementById('login-form');
+            const email = form.email.value;
+            const password = form.password.value;
+            const submitButton = document.getElementById('login-submit-button');
+            const errorDiv = document.getElementById('login-error-message');
+            errorDiv.innerHTML = '';
+
+            if (!email || !password) {
+                errorDiv.innerHTML = `<p class="text-sm text-red-600 mt-3">الرجاء إدخال البريد الإلكتروني وكلمة المرور.</p>`;
+                return;
+            }
+
+            submitButton.disabled = true;
+            submitButton.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 ml-2 animate-spin"></i> جاري الدخول...`;
+            if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                // onAuthStateChanged ستتولى إخفاء شاشة الدخول وعرض التطبيق
+            } catch (error) {
+                console.error("Login failed:", error);
+                let message = 'خطأ غير معروف في الدخول.';
+                if (error.code === 'auth/user-not-found') {
+                    message = 'هذا المستخدم غير مسجل في النظام.';
+                } else if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+                    message = 'خطأ في البريد الإلكتروني أو كلمة المرور.';
+                } else if (error.code === 'auth/too-many-requests') {
+                    message = 'تم حظر هذا الحساب مؤقتاً بسبب محاولات دخول فاشلة كثيرة.';
+                } else if (error.code === 'auth/invalid-email') {
+                    message = 'صيغة البريد الإلكتروني غير صحيحة.';
+                } else {
+                    message = `فشل الدخول: ${error.message} (رمز: ${error.code})`;
+                }
+                errorDiv.innerHTML = `<p class="text-sm text-red-600 mt-3">فشل الدخول: ${message}</p>`;
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = 'تسجيل الدخول';
+                if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+            }
+        };
+
+        // 💥 دالة تسجيل حساب جديد
+        window.handleRegister = async (e) => {
+            e.preventDefault();
+            const form = document.getElementById('register-form');
+            const email = form.regEmail.value;
+            const password = form.regPassword.value;
+            const submitButton = document.getElementById('register-submit-button');
+            const errorDiv = document.getElementById('register-error-message');
+            errorDiv.innerHTML = '';
+
+            if (!email || password.length < 6) {
+                errorDiv.innerHTML = `<p class="text-sm text-red-600 mt-3">الرجاء إدخال بريد إلكتروني وكلمة مرور لا تقل عن 6 أحرف.</p>`;
+                return;
+            }
+
+            submitButton.disabled = true;
+            submitButton.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 ml-2 animate-spin"></i> جاري إنشاء الحساب...`;
+            if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+
+            try {
+                await createUserWithEmailAndPassword(auth, email, password);
+                alert('تم إنشاء الحساب بنجاح! سيتم تسجيل دخولك الآن.');
+                // onAuthStateChanged ستتولى إخفاء شاشة الدخول وعرض التطبيق
+            } catch (error) {
+                console.error("Registration failed:", error);
+                let message = 'خطأ غير معروف في التسجيل.';
+                if (error.code === 'auth/email-already-in-use') {
+                    message = 'البريد الإلكتروني مُسجل بالفعل.';
+                } else if (error.code === 'auth/weak-password') {
+                    message = 'كلمة المرور ضعيفة جداً (يجب أن تكون 6 أحرف على الأقل).';
+                } else if (error.code === 'auth/invalid-email') {
+                    message = 'صيغة البريد الإلكتروني غير صحيحة.';
+                } else {
+                    message = `فشل إنشاء الحساب: ${error.message} (رمز: ${error.code})`;
+                }
+                errorDiv.innerHTML = `<p class="text-sm text-red-600 mt-3">فشل إنشاء الحساب: ${message}</p>`;
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = 'إنشاء حساب جديد';
+                if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+            }
+        };
+
+        // 💥 دالة تسجيل الخروج
+        window.handleLogout = async () => {
+            const confirmLogout = confirm('هل أنت متأكد من تسجيل الخروج؟');
+            if (confirmLogout) {
+                try {
+                    await signOut(auth);
+                    // onAuthStateChanged ستتولى عرض شاشة الدخول
+                    alert('تم تسجيل الخروج بنجاح.');
+                } catch (error) {
+                    console.error("Logout failed:", error);
+                    alert(`فشل تسجيل الخروج: ${error.message}`);
+                }
+            }
+        };
+
+        // 💥 دالة تبديل بين نموذجي الدخول والتسجيل
+        window.toggleForm = (formToShow) => {
+            const loginForm = document.getElementById('login-form-container');
+            const registerForm = document.getElementById('register-form-container');
+            const loginTitle = document.getElementById('login-title');
+            const registerTitle = document.getElementById('register-title');
+
+            if (formToShow === 'register') {
+                loginForm.classList.add('hidden');
+                registerForm.classList.remove('hidden');
+                loginTitle.classList.remove('font-bold', 'text-teal-700', 'border-b-2', 'border-teal-600');
+                registerTitle.classList.add('font-bold', 'text-teal-700', 'border-b-2', 'border-teal-600');
+            } else {
+                loginForm.classList.remove('hidden');
+                registerForm.classList.add('hidden');
+                loginTitle.classList.add('font-bold', 'text-teal-700', 'border-b-2', 'border-teal-600');
+                registerTitle.classList.remove('font-bold', 'text-teal-700', 'border-b-2', 'border-teal-600');
+            }
         };
 
         const setupRealtimeListener = () => {
             if (unsubscribeFromFirestore) {
                 unsubscribeFromFirestore();
             }
+            // 💥 التحقق من userId أصبح ضرورياً
             if (!userId) return;
 
             try {
@@ -285,7 +439,6 @@
 
                     inventory = loadedItems;
                     renderApp();
-                    document.getElementById('loading-state').style.display = 'none';
 
                 }, (error) => {
                     console.error("Firestore Listen Error:", error);
@@ -297,12 +450,10 @@
                         `;
                     inventory = [];
                     renderApp();
-                    document.getElementById('loading-state').style.display = 'none';
                     if (typeof lucide !== 'undefined') { lucide.createIcons(); }
                 });
             } catch (e) {
                 console.error("Error setting up Firestore listener:", e);
-                document.getElementById('loading-state').style.display = 'none';
             }
         };
 
@@ -364,6 +515,7 @@
                         itemNameEnglish: 'اسم الصنف الإنجليزي (اختياري - كبديل للاسم العربي)', // ** جديد **
                         quantity: 'الكمية الواردة (مطلوب)',
                         costPrice: 'سعر التكلفة (مطلوب)',
+                        publicPrice: 'سعر البيع/الجمهور (مطلوب)', // ** تمت الإضافة هنا **
                         expiryDate: 'تاريخ الانتهاء (مطلوب)'
                     };
                 case 'sales':
@@ -383,8 +535,8 @@
             const modalHtml = `
                 <div id="import-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50" dir="rtl">
                     <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden transform transition-all scale-100">
-                        <div class="p-6 border-b flex justify-between items-center bg-green-50">
-                            <h2 class="text-2xl font-bold text-green-700 flex items-center">
+                        <div class="p-6 border-b flex justify-between items-center bg-teal-50">
+                            <h2 class="text-2xl font-bold text-teal-700 flex items-center">
                                 <i data-lucide="upload" class="w-6 h-6 ml-2"></i>
                                 استيراد بيانات من ملف Excel
                             </h2>
@@ -397,7 +549,7 @@
                             <h3 class="text-lg font-semibold text-gray-800">الخطوة 1: اختيار نوع الملف وتحميله</h3>
                             <div>
                                 <label for="importType" class="block text-sm font-medium text-gray-700 mb-1">نوع الملف</label>
-                                <select id="importType" name="importType" required class="block w-full rounded-md border-gray-300 py-2.5 pl-4 pr-8 text-sm focus:border-green-500 focus:ring-green-500">
+                                <select id="importType" name="importType" required class="block w-full rounded-md border-gray-300 py-2.5 pl-4 pr-8 text-sm focus:border-teal-500 focus:ring-teal-500">
                                     <option value="">-- اختر نوع الملف --</option>
                                     <option value="items">ملف الأصناف الأساسية (لإضافة وتحديث الأصناف)</option>
                                     <option value="purchases">ملف المشتريات/الوارد (لإضافة كميات ورصيد)</option>
@@ -414,7 +566,7 @@
                             <div class="pt-4 flex justify-start">
                                 <button
                                     type="submit"
-                                    class="px-6 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition duration-150 shadow-md flex items-center"
+                                    class="px-6 py-2 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition duration-150 shadow-md flex items-center"
                                 >
                                     <i data-lucide="arrow-left" class="w-5 h-5 ml-2"></i>
                                     الانتقال لمطابقة الحقول
@@ -435,7 +587,7 @@
                                     <button
                                         type="submit"
                                         id="import-submit-button"
-                                        class="px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition duration-150 shadow-md flex items-center"
+                                        class="px-6 py-2 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition duration-150 shadow-md flex items-center"
                                     >
                                         <i data-lucide="database" class="w-5 h-5 ml-2"></i>
                                         بدء الاستيراد والمعالجة
@@ -451,7 +603,7 @@
             document.getElementById('import-mapping-form').onsubmit = handleImportSubmit;
         };
 
-        const handleFileLoad = (e) => {
+       const handleFileLoad = (e) => {
             e.preventDefault();
             const file = document.getElementById('fileInput').files[0];
             const importType = document.getElementById('importType').value;
@@ -867,7 +1019,10 @@
             }
         };
 
-        // --- Modal & Form Handlers (Add/Edit, Delete, Audit) ---
+
+        // ----------------------------------------------------------------------------------
+        // ** منطق إدارة الأصناف (Add/Edit, Delete, Audit) **
+        // ----------------------------------------------------------------------------------
 
         // 💥 التعديل هنا: جعل الدالة عالمية (Global)
         window.openAddEditModal = (itemId = null) => {
@@ -887,46 +1042,48 @@
             const modalHtml = `
                 <div id="item-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50" dir="rtl">
                     <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all scale-100">
-                        <div class="p-6 border-b flex justify-between items-center bg-indigo-50">
-                            <h2 class="text-2xl font-bold text-indigo-700">
+                        <div class="p-6 border-b flex justify-between items-center bg-teal-50">
+                            <h2 class="text-2xl font-bold text-teal-700">
                                 ${isEditing ? '📝 تعديل صنف: ' + name : '➕ إضافة صنف جديد'}
                             </h2>
                             <button onclick="window.closeModal('item-modal')" class="text-gray-400 hover:text-gray-600" aria-label="إغلاق">
                                 <i data-lucide="x" class="w-6 h-6"></i>
                             </button>
                         </div>
-                        <form id="item-form" class="p-6 space-y-4" data-mode="${isEditing ? 'edit' : 'add'}" data-item-id="${itemId || ''}">
+                        <form id="item-form" class="p-6 space-y-6" data-mode="${isEditing ? 'edit' : 'add'}" data-item-id="${itemId || ''}">
                             <div class="grid grid-cols-2 gap-4">
-                                ${renderInput('كود/باركود الصنف', 'itemCode', code, 'text', 'barcode', 'col-span-2', null)}
-                                ${renderInput('اسم الصنف', 'itemName', name, 'text', 'tag', 'col-span-2', null)}
-
-                                <div>
-                                    <label for="itemCategory" class="block text-sm font-medium text-gray-700 mb-1">الفئة</label>
-                                    <select id="itemCategory" name="itemCategory" required
-                                        class="block w-full rounded-md border-gray-300 py-2.5 pl-4 pr-3 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                                        ${inventoryCategories.map(cat =>
-                `<option value="${cat}" ${cat === category ? 'selected' : ''}>${cat}</option>`
-            ).join('')}
-                                    </select>
-                                </div>
-                                ${renderInput('الحد الأدنى للكمية', 'itemMinQuantity', minQuantity, 'tel', 'zap', 'w-1/2', null)}
+                                ${renderInput('كود الصنف/الباركود (مطلوب)', 'itemCode', code, 'text', 'barcode', isEditing ? 'col-span-1' : 'col-span-2')}
+                                ${renderInput('اسم المنتج الأساسي (مطلوب)', 'itemName', name, 'text', 'tag')}
                             </div>
 
-                            <div class="grid grid-cols-2 gap-4 border p-4 rounded-lg bg-gray-50">
-                                <h3 class="col-span-2 font-semibold text-gray-700">بيانات المخزون والقيمة</h3>
-                                ${renderInput('الكمية الحالية', 'itemQuantity', quantity, 'tel', 'box', '', null)}
-                                ${renderInput('تاريخ الانتهاء', 'itemExpiryDate', expiryDate, 'date', 'calendar')}
-                                ${renderInput('سعر الجمهور', 'itemPublicPrice', publicPrice, 'tel', 'dollar-sign')}
-                                ${renderInput('سعر التكلفة', 'itemCostPrice', costPrice, 'tel', 'building-2')}
+                            <div class="grid grid-cols-2 gap-4">
+                                ${renderInput('الكمية الحالية', 'itemQuantity', quantity, 'tel', 'package', 'col-span-1')}
+                                ${renderInput('الحد الأدنى للكمية', 'itemMinQuantity', minQuantity, 'tel', 'minus', 'col-span-1')}
+                            </div>
+
+                            <div class="grid grid-cols-3 gap-4">
+                                ${renderInput('سعر التكلفة', 'itemCostPrice', costPrice, 'tel', 'dollar-sign', 'col-span-1')}
+                                ${renderInput('سعر الجمهور/البيع', 'itemPublicPrice', publicPrice, 'tel', 'dollar-sign', 'col-span-1')}
+                                ${renderInput('تاريخ الانتهاء', 'itemExpiryDate', expiryDate, 'text', 'calendar', 'col-span-1')}
+                            </div>
+
+                            <div>
+                                <label for="itemCategory" class="block text-sm font-medium text-gray-700 mb-1">الفئة</label>
+                                <select id="itemCategory" name="itemCategory" required
+                                    class="block w-full rounded-md border-gray-300 py-2.5 pl-4 pr-8 text-sm focus:border-teal-500 focus:ring-teal-500">
+                                    ${inventoryCategories.map(cat =>
+                                        `<option value="${cat}" ${category === cat ? 'selected' : ''}>${cat}</option>`
+                                    ).join('')}
+                                </select>
                             </div>
 
                             <div class="pt-4 flex justify-start">
                                 <button
                                     type="submit"
                                     id="item-submit-button"
-                                    class="px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition duration-150 shadow-md flex items-center"
+                                    class="px-6 py-3 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition duration-150 shadow-md flex items-center"
                                 >
-                                    <i data-lucide="${isEditing ? 'save' : 'plus'}" class="w-5 h-5 ml-2"></i>
+                                    <i data-lucide="${isEditing ? 'square-pen' : 'plus-circle'}" class="w-5 h-5 ml-2"></i>
                                     ${isEditing ? 'حفظ التعديلات' : 'إضافة الصنف'}
                                 </button>
                             </div>
@@ -935,21 +1092,27 @@
                 </div>
             `;
             openModal(modalHtml);
-            document.getElementById('item-form').onsubmit = handleSubmit;
+            document.getElementById('item-form').onsubmit = handleItemSubmit;
         };
 
-        const handleSubmit = async (e) => {
+        const handleItemSubmit = async (e) => {
             e.preventDefault();
             const form = e.target;
-            const submitButton = document.getElementById('item-submit-button');
-            const isEditing = form.dataset.mode === 'edit';
+            const mode = form.dataset.mode;
             const itemId = form.dataset.itemId;
+            const submitButton = document.getElementById('item-submit-button');
 
-            // 💡 استخدام الدالة الجديدة لتنظيف المدخلات
+            // تنظيف وقراءة القيم الرقمية باستخدام الدالة المحدثة
             const quantity = cleanNumberValue(form.itemQuantity.value);
             const minQuantity = cleanNumberValue(form.itemMinQuantity.value);
             const publicPrice = cleanNumberValue(form.itemPublicPrice.value);
             const costPrice = cleanNumberValue(form.itemCostPrice.value);
+
+            // التحقق من الحقول الأساسية
+            if (!form.itemCode.value.trim() || !form.itemName.value.trim()) {
+                alert('الرجاء إدخال كود الصنف واسم المنتج.');
+                return;
+            }
 
             if (!userId) {
                 alert('النظام غير مصادق بعد. حاول مرة أخرى.');
@@ -957,8 +1120,9 @@
             }
 
             const collectionRef = getInventoryCollectionRef();
+
             const itemData = {
-                code: form.itemCode.value.trim() || 'N/A',
+                code: form.itemCode.value.trim(),
                 name: form.itemName.value.trim(),
                 category: form.itemCategory.value,
                 quantity: quantity, // سيتم تخزين القيمة الكسرية بشكل سليم هنا (مثل 1.5)
@@ -974,67 +1138,182 @@
             if (typeof lucide !== 'undefined') { lucide.createIcons(); }
 
             try {
-                if (isEditing) {
-                    await updateDoc(doc(collectionRef, itemId), itemData);
-                } else {
-                    await addDoc(collectionRef, {
-                        ...itemData,
-                        createdAt: new Date().toISOString()
-                    });
+                if (mode === 'add') {
+                    // تحقق من عدم تكرار الكود
+                    const existingItem = inventory.find(i => i.code === itemData.code);
+                    if (existingItem) {
+                        alert(`صنف بهذا الكود (${itemData.code}) موجود بالفعل: ${existingItem.name}. الرجاء التعديل عليه بدلاً من الإضافة.`);
+                        return;
+                    }
+                    const newDocRef = doc(collectionRef);
+                    await setDoc(newDocRef, { ...itemData, id: newDocRef.id, createdAt: new Date().toISOString() });
+                    alert('تم إضافة الصنف بنجاح.');
+                } else if (mode === 'edit') {
+                    const docRef = doc(collectionRef, itemId);
+                    await updateDoc(docRef, itemData);
+                    alert('تم تحديث الصنف بنجاح.');
                 }
+
                 window.closeModal('item-modal');
-            } catch (e) {
-                console.error("Firestore Save Error:", e);
-                alert(`فشل حفظ الصنف: ${e.message}`);
+            } catch (error) {
+                console.error("Error saving item:", error);
+                alert(`فشل في حفظ البيانات: ${error.message}`);
             } finally {
                 submitButton.disabled = false;
-                submitButton.textContent = isEditing ? 'حفظ التعديلات' : 'إضافة الصنف';
+                submitButton.textContent = mode === 'edit' ? 'حفظ التعديلات' : 'إضافة الصنف';
                 if (typeof lucide !== 'undefined') { lucide.createIcons(); }
             }
         };
 
+        // ----------------------------------------------------
+        // ** منطق حذف صنف **
+        // ----------------------------------------------------
         // 💥 التعديل هنا: جعل الدالة عالمية (Global)
         window.openDeleteConfirmModal = (itemId) => {
-            const item = inventory.find(i => i.id === itemId);
-            if (!item) return;
+            currentItem = inventory.find(i => i.id === itemId);
+            if (!currentItem) return;
 
             const modalHtml = `
-                <div id="confirm-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50" dir="rtl">
-                    <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 text-center transform transition-all scale-100">
-                        <i data-lucide="alert-triangle" class="w-12 h-12 text-red-500 mx-auto"></i>
-                        <h3 class="text-xl font-bold text-gray-900">تأكيد الحذف</h3>
-                        <p class="text-gray-600">هل أنت متأكد من حذف الصنف <span class="font-semibold text-red-600">${item.name}</span>؟ لا يمكن التراجع عن هذا الإجراء.</p>
-                        <div class="flex justify-center space-x-4 space-x-reverse pt-4">
-                            <button onclick="window.closeModal('confirm-modal')" class="px-6 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition">إلغاء</button>
-                            <button id="confirm-modal-button" data-item-id="${itemId}" class="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-semibold">نعم، احذف الصنف</button>
+                <div id="delete-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50" dir="rtl">
+                    <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all scale-100">
+                        <div class="p-6 border-b flex justify-between items-center bg-red-50">
+                            <h2 class="text-xl font-bold text-red-700 flex items-center">
+                                <i data-lucide="trash-2" class="w-5 h-5 ml-2"></i>
+                                تأكيد الحذف
+                            </h2>
+                            <button onclick="window.closeModal('delete-modal')" class="text-gray-400 hover:text-gray-600" aria-label="إغلاق">
+                                <i data-lucide="x" class="w-6 h-6"></i>
+                            </button>
+                        </div>
+                        <div class="p-6">
+                            <p class="text-gray-700">هل أنت متأكد من حذف الصنف <span class="font-bold text-red-600">${currentItem.name}</span> بشكل نهائي؟</p>
+                            <p class="text-sm text-gray-500 mt-2">لا يمكن التراجع عن هذا الإجراء.</p>
+                            <div class="mt-6 flex justify-end space-x-3 space-x-reverse">
+                                <button onclick="window.closeModal('delete-modal')"
+                                        class="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition duration-150">
+                                    إلغاء
+                                </button>
+                                <button onclick="handleItemDelete('${itemId}')" id="delete-submit-button"
+                                        class="px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition duration-150 shadow-md flex items-center">
+                                    <i data-lucide="trash-2" class="w-4 h-4 ml-2"></i>
+                                    نعم، احذف الصنف
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
             `;
             openModal(modalHtml);
-            document.getElementById('confirm-modal-button').onclick = handleDeleteItem;
         };
 
-        const handleDeleteItem = async (e) => {
-            const itemId = document.getElementById('confirm-modal-button').dataset.itemId;
-            const submitButton = e.target;
+        // 💥 دالة الحذف الفعلية (جعلتها عالمية)
+        window.handleItemDelete = async (itemId) => {
+            const submitButton = document.getElementById('delete-submit-button');
+
+            if (!userId) {
+                alert('النظام غير مصادق بعد. حاول مرة أخرى.');
+                return;
+            }
+
             submitButton.disabled = true;
             submitButton.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 ml-2 animate-spin"></i> جاري الحذف...`;
             if (typeof lucide !== 'undefined') { lucide.createIcons(); }
 
             try {
+                const docRef = doc(getInventoryCollectionRef(), itemId);
+                await deleteDoc(docRef);
+                window.closeModal('delete-modal');
+                alert('تم حذف الصنف بنجاح.');
+            } catch (error) {
+                console.error("Error deleting item:", error);
+                alert(`فشل في حذف البيانات: ${error.message}`);
+            }
+        };
+
+        // ----------------------------------------------------
+        // ** منطق حذف كل البيانات **
+        // ----------------------------------------------------
+        window.openDeleteAllConfirmModal = () => {
+            const modalHtml = `
+                <div id="delete-all-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50" dir="rtl">
+                    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100">
+                        <div class="p-6 border-b flex justify-between items-center bg-red-50">
+                            <h2 class="text-xl font-bold text-red-700 flex items-center">
+                                <i data-lucide="alert-triangle" class="w-5 h-5 ml-2"></i>
+                                تحذير: حذف جميع بيانات المخزون
+                            </h2>
+                            <button onclick="window.closeModal('delete-all-modal')" class="text-gray-400 hover:text-gray-600" aria-label="إغلاق">
+                                <i data-lucide="x" class="w-6 h-6"></i>
+                            </button>
+                        </div>
+                        <form id="delete-all-form" class="p-6">
+                            <p class="text-gray-700">هذا الإجراء سيقوم بحذف <span class="font-bold text-red-600">${formatNumber(inventory.length)}</span> أصناف موجودة في مخزونك. <span class="font-extrabold text-red-700">لا يمكن التراجع!</span></p>
+                            <p class="text-sm text-gray-500 mt-2">للتأكيد، الرجاء كتابة كلمة <span class="font-mono text-red-600 bg-red-100 p-1 rounded">احذف كل شيء</span> في الحقل أدناه:</p>
+                            <input type="text" id="delete-all-confirmation" required class="mt-4 block w-full rounded-md border-red-300 py-2.5 text-center text-red-600 font-bold focus:border-red-500 focus:ring-red-500" placeholder="اكتب هنا: احذف كل شيء">
+                            <div class="mt-6 flex justify-end space-x-3 space-x-reverse">
+                                <button type="button" onclick="window.closeModal('delete-all-modal')"
+                                        class="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition duration-150">
+                                    إلغاء
+                                </button>
+                                <button type="submit" id="delete-all-submit-button"
+                                        class="px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition duration-150 shadow-md flex items-center">
+                                    نعم، أحذف كل شيء
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+            openModal(modalHtml);
+            document.getElementById('delete-all-form').onsubmit = handleDeleteAllSubmit;
+        };
+
+        const handleDeleteAllSubmit = async (e) => {
+            e.preventDefault();
+            const confirmationText = document.getElementById('delete-all-confirmation').value.trim();
+            const submitButton = document.getElementById('delete-all-submit-button');
+
+            if (confirmationText !== 'احذف كل شيء') {
+                alert('الرجاء كتابة عبارة التأكيد بشكل صحيح.');
+                return;
+            }
+
+            if (!userId) {
+                alert('النظام غير مصادق بعد. حاول مرة أخرى.');
+                return;
+            }
+
+            submitButton.disabled = true;
+            submitButton.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 ml-2 animate-spin"></i> جاري الحذف...`;
+            if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+
+            try {
+                const batch = writeBatch(db);
                 const collectionRef = getInventoryCollectionRef();
-                await deleteDoc(doc(collectionRef, itemId));
-                window.closeModal('confirm-modal');
+                const snapshot = await getDocs(collectionRef);
+                let count = 0;
+
+                snapshot.docs.forEach((doc) => {
+                    batch.delete(doc.ref);
+                    count++;
+                });
+
+                await batch.commit();
+                window.closeModal('delete-all-modal');
+                alert(`تم حذف جميع بيانات المخزون بنجاح. عدد الأصناف المحذوفة: ${formatNumber(count)}`);
             } catch (e) {
-                console.error("Firestore Delete Error:", e);
-                alert(`فشل حذف الصنف: ${e.message}`);
+                console.error("Error deleting all items:", e);
+                alert(`فشل في حذف جميع البيانات: ${e.message}`);
             } finally {
                 submitButton.disabled = false;
-                submitButton.textContent = 'نعم، احذف الصنف';
+                submitButton.textContent = 'نعم، أحذف كل شيء';
                 if (typeof lucide !== 'undefined') { lucide.createIcons(); }
             }
         };
+
+        // ----------------------------------------------------------------------------------
+        // ** منطق الجرد والمطابقة **
+        // ----------------------------------------------------------------------------------
 
         // 💥 التعديل هنا: جعل الدالة عالمية (Global)
         window.openAuditModal = (itemId) => {
@@ -1047,9 +1326,10 @@
             const modalHtml = `
                 <div id="audit-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50" dir="rtl">
                     <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all scale-100">
-                        <div class="p-6 border-b flex justify-between items-center bg-indigo-50">
-                            <h2 class="text-2xl font-bold text-indigo-700 flex items-center">
-                                <i data-lucide="scale" class="w-5 h-5 ml-2"></i> جرد ومطابقة صنف: ${currentItem.name}
+                        <div class="p-6 border-b flex justify-between items-center bg-teal-50">
+                            <h2 class="text-2xl font-bold text-teal-700 flex items-center">
+                                <i data-lucide="scale" class="w-5 h-5 ml-2"></i>
+                                جرد ومطابقة صنف: ${currentItem.name}
                             </h2>
                             <button onclick="window.closeModal('audit-modal')" class="text-gray-400 hover:text-gray-600" aria-label="إغلاق">
                                 <i data-lucide="x" class="w-6 h-6"></i>
@@ -1057,30 +1337,32 @@
                         </div>
                         <form id="audit-form" class="p-6 space-y-4" data-item-id="${itemId}">
                             <p class="text-gray-700 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                                الرصيد الدفتري المسجل قبل الحركات: <span class="font-bold text-lg text-indigo-700">${formatNumber(startingBookQuantity)} وحدة</span>
+                                الرصيد الدفتري المسجل قبل الحركات: <span class="font-bold text-lg text-teal-700">${formatNumber(startingBookQuantity)} وحدة</span>
                             </p>
-                            <div class="flex space-x-4 space-x-reverse">
-                                ${renderInput('كمية الشراء (الكمية الواردة)', 'purchasedQuantity', '0', 'tel', 'arrow-up-circle', 'w-1/2', null)}
-                                ${renderInput('الكمية المباعة (الكمية الصادرة)', 'soldQuantity', '0', 'tel', 'arrow-down-circle', 'w-1/2', null)}
+
+                            <div class="grid grid-cols-2 gap-4">
+                                ${renderInput('كمية مشتريات (واردة) لم تسجل بعد', 'purchasedQuantity', '', 'tel', 'arrow-big-down-dash', 'col-span-1')}
+                                ${renderInput('كمية مبيعات (صادرة) لم تسجل بعد', 'soldQuantity', '', 'tel', 'arrow-big-up-dash', 'col-span-1')}
                             </div>
-                            ${renderInput('الرصيد الفعلي (الكمية المعدودة)', 'physicalQuantity', currentItem.quantity, 'tel', 'box', '', null)}
-                            ${renderInput('تاريخ إجراء الجرد', 'lastAuditDate', currentItem.lastAuditDate || today, 'date', 'calendar')}
-                            <div class="p-3 rounded-lg border border-gray-300 space-y-2">
-                                <p class="text-gray-700">الرصيد الدفتري المتوقع: <span id="expected-book-quantity" class="font-bold text-lg text-indigo-700">${formatNumber(startingBookQuantity)}</span></p>
-                                <p class="text-gray-700">حالة المطابقة (العجز/الزيادة):</p>
-                                <span id="audit-variance-display" class="inline-flex items-center text-sm font-semibold rounded-full px-2 py-1 bg-gray-200 text-gray-800">
-                                    0
-                                </span>
+
+                            ${renderInput('الرصيد الفعلي بعد الجرد', 'physicalQuantity', startingBookQuantity, 'tel', 'package-check')}
+
+                            <div class="grid grid-cols-2 gap-4">
+                                ${renderInput('تاريخ آخر جرد', 'lastAuditDate', currentItem.lastAuditDate || today, 'text', 'calendar')}
+                            </div>
+
+                            <div id="audit-variance" class="text-lg font-bold p-3 rounded-lg border border-gray-300 bg-gray-50">
+                                الفرق المتوقع (العجز/الزيادة): <span id="variance-value" class="text-gray-700">0 وحدة</span>
                             </div>
 
                             <div class="pt-4 flex justify-start">
                                 <button
                                     type="submit"
                                     id="audit-submit-button"
-                                    class="px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition duration-150 shadow-md flex items-center"
+                                    class="px-6 py-3 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition duration-150 shadow-md flex items-center"
                                 >
-                                    <i data-lucide="check-circle" class="w-5 h-5 ml-2"></i>
-                                    تطبيق الجرد وتحديث الرصيد
+                                    <i data-lucide="package-check" class="w-5 h-5 ml-2"></i>
+                                    تحديث الكمية بالرصيد الفعلي
                                 </button>
                             </div>
                         </form>
@@ -1088,45 +1370,45 @@
                 </div>
             `;
             openModal(modalHtml);
+            document.getElementById('audit-form').onsubmit = handleAuditSubmit;
 
-            const purchasedQuantityInput = document.getElementById('purchasedQuantity');
-            const soldQuantityInput = document.getElementById('soldQuantity');
-            const physicalQuantityInput = document.getElementById('physicalQuantity');
+            const purchasedInput = document.getElementById('purchasedQuantity');
+            const soldInput = document.getElementById('soldQuantity');
+            const physicalInput = document.getElementById('physicalQuantity');
+            const varianceElement = document.getElementById('audit-variance');
+            const varianceValueElement = document.getElementById('variance-value');
 
-            const updateAuditDisplay = () => {
-                const purchased = cleanNumberValue(purchasedQuantityInput.value);
-                const sold = cleanNumberValue(soldQuantityInput.value);
-                const physical = cleanNumberValue(physicalQuantityInput.value);
+            // دالة لحساب وتحديث الفروقات
+            const updateAuditCalculations = () => {
+                const purchased = cleanNumberValue(purchasedInput.value);
+                const sold = cleanNumberValue(soldInput.value);
+                const physical = cleanNumberValue(physicalInput.value);
 
                 const expected = startingBookQuantity + purchased - sold;
                 const variance = physical - expected;
 
-                document.getElementById('expected-book-quantity').textContent = formatNumber(expected);
-
-                const varianceDisplay = document.getElementById('audit-variance-display');
-                let varianceText = formatNumber(Math.abs(variance));
-                let varianceClass = 'bg-gray-200 text-gray-800';
-
-                if (variance > 0) {
-                    varianceText = `زيادة: +${varianceText}`;
-                    varianceClass = 'bg-green-100 text-green-700';
-                } else if (variance < 0) {
-                    varianceText = `عجز: -${varianceText}`;
-                    varianceClass = 'bg-red-100 text-red-700';
+                if (Math.abs(variance) < 0.001) { // مقارنة بفارق بسيط جداً لتجنب مشاكل الكسور
+                    varianceElement.className = 'text-lg font-bold p-3 rounded-lg border border-green-500 bg-green-100';
+                    varianceValueElement.textContent = 'متطابق';
+                    varianceValueElement.className = 'text-green-700';
+                } else if (variance > 0) {
+                    varianceElement.className = 'text-lg font-bold p-3 rounded-lg border border-blue-500 bg-blue-100';
+                    varianceValueElement.textContent = `زيادة: +${formatNumber(variance.toFixed(2))} وحدة`;
+                    varianceValueElement.className = 'text-blue-700';
                 } else {
-                    varianceText = 'مطابق (0)';
+                    varianceElement.className = 'text-lg font-bold p-3 rounded-lg border border-red-500 bg-red-100';
+                    varianceValueElement.textContent = `عجز: -${formatNumber(Math.abs(variance).toFixed(2))} وحدة`;
+                    varianceValueElement.className = 'text-red-700';
                 }
-
-                varianceDisplay.className = `inline-flex items-center text-sm font-semibold rounded-full px-2 py-1 ${varianceClass}`;
-                varianceDisplay.textContent = varianceText;
             };
 
-            [purchasedQuantityInput, soldQuantityInput, physicalQuantityInput].forEach(input => {
-                input.addEventListener('input', updateAuditDisplay);
-            });
+            // ربط الأحداث
+            purchasedInput.addEventListener('input', updateAuditCalculations);
+            soldInput.addEventListener('input', updateAuditCalculations);
+            physicalInput.addEventListener('input', updateAuditCalculations);
 
-            document.getElementById('audit-form').onsubmit = handleAuditSubmit;
-            updateAuditDisplay(); // تهيئة العرض
+            // تشغيلها مرة واحدة لتحديث القيم الافتراضية
+            updateAuditCalculations();
         };
 
         const handleAuditSubmit = async (e) => {
@@ -1137,7 +1419,7 @@
 
             const purchased = cleanNumberValue(form.purchasedQuantity.value);
             const sold = cleanNumberValue(form.soldQuantity.value);
-            const physical = cleanNumberNumber(form.physicalQuantity.value);
+            const physical = cleanNumberValue(form.physicalQuantity.value);
             const lastAuditDate = form.lastAuditDate.value || null;
 
             const currentItemData = inventory.find(i => i.id === itemId);
@@ -1160,68 +1442,59 @@
             try {
                 const collectionRef = getInventoryCollectionRef();
                 await updateDoc(doc(collectionRef, itemId), updateData);
+
                 window.closeModal('audit-modal');
-                alert(`تم تحديث رصيد الصنف بنجاح. الرصيد الفعلي الجديد: ${formatNumber(physical)}. الفرق (العجز/الزيادة): ${formatNumber(variance)}.`);
-            } catch (e) {
-                console.error("Firestore Audit Error:", e);
-                alert(`فشل تطبيق الجرد: ${e.message}`);
+                alert(`تم تحديث الكمية الفعلية بنجاح إلى ${formatNumber(physical)} وحدة. الفرق (العجز/الزيادة): ${formatNumber(variance.toFixed(2))} وحدة.`);
+            } catch (error) {
+                console.error("Error updating audit:", error);
+                alert(`فشل في تحديث بيانات الجرد: ${error.message}`);
             } finally {
                 submitButton.disabled = false;
-                submitButton.textContent = 'تطبيق الجرد وتحديث الرصيد';
+                submitButton.textContent = 'تحديث الكمية بالرصيد الفعلي';
                 if (typeof lucide !== 'undefined') { lucide.createIcons(); }
             }
         };
 
-        // --- Rendering & Event Listeners ---
+        // ----------------------------------------------------
+        // ** منطق العرض الرئيسي (Rendering Logic) **
+        // ----------------------------------------------------
 
-        // دالة جديدة لحساب إجمالي القيمة (التكلفة والجمهور)
-        const calculateTotalValues = () => {
+        const calculateTotals = (items) => {
+            let totalQuantity = 0;
             let totalCostValue = 0;
             let totalPublicValue = 0;
+            let totalPotentialProfit = 0;
 
-            inventory.forEach(item => {
-                const quantity = Number(item.quantity) || 0;
-                const costPrice = Number(item.costPrice) || 0;
-                const publicPrice = Number(item.publicPrice) || 0;
-
-                totalCostValue += quantity * costPrice;
-                totalPublicValue += quantity * publicPrice;
+            items.forEach(item => {
+                totalQuantity += item.quantity;
+                totalCostValue += item.quantity * item.costPrice;
+                totalPublicValue += item.quantity * item.publicPrice;
+                totalPotentialProfit += item.quantity * (item.publicPrice - item.costPrice);
             });
 
-            return { totalCostValue, totalPublicValue };
-        };
-
-        const renderStats = () => {
-            const totalItems = inventory.length;
-            const lowStockCount = inventory.filter(i => i.quantity <= i.minQuantity).length;
-            const expiredCount = inventory.filter(i => i.expiryDate && new Date(i.expiryDate) < new Date()).length;
-            const nearExpiryCount = inventory.filter(i => i.expiryDate && new Date(i.expiryDate) < new Date(new Date().setMonth(new Date().getMonth() + 3)) && new Date(i.expiryDate) >= new Date()).length;
-            const goodStockCount = totalItems - lowStockCount - expiredCount - nearExpiryCount;
-
-            const { totalCostValue, totalPublicValue } = calculateTotalValues();
-
-            document.getElementById('total-items-count').textContent = formatNumber(totalItems);
-            document.getElementById('low-stock-count').textContent = formatNumber(lowStockCount);
-            document.getElementById('expired-count').textContent = formatNumber(expiredCount);
-            document.getElementById('near-expiry-count').textContent = formatNumber(nearExpiryCount);
-            document.getElementById('good-stock-count').textContent = formatNumber(goodStockCount);
-            // تحديث القيم الجديدة
-            document.getElementById('total-cost-value').textContent = formatNumber(totalCostValue);
-            document.getElementById('total-public-value').textContent = formatNumber(totalPublicValue);
+            document.getElementById('total-quantity').textContent = formatNumber(totalQuantity.toFixed(2));
+            document.getElementById('total-cost-value').textContent = formatNumber(totalCostValue.toFixed(2)) + ' ج.م';
+            document.getElementById('total-public-value').textContent = formatNumber(totalPublicValue.toFixed(2)) + ' ج.م';
+            document.getElementById('total-potential-profit').textContent = formatNumber(totalPotentialProfit.toFixed(2)) + ' ج.م';
         };
 
         const renderCategoryFilter = () => {
-            const container = document.getElementById('category-filter-container');
-            const categoriesHtml = ['الكل', 'كمية منخفضة', 'منتهي الصلاحية', 'قرب الانتهاء', ...inventoryCategories].map(cat => {
-                const isActive = currentFilter.category === cat;
+            const container = document.getElementById('category-filters');
+            const categories = ['الكل', 'كمية منخفضة', 'منتهي الصلاحية', 'قرب الانتهاء', ...inventoryCategories];
+
+            const categoriesHtml = categories.map(cat => {
+                const isSelected = currentFilter.category === cat;
                 return `
-                    <button data-category="${cat}" class="px-3 py-1 text-sm rounded-full transition ${isActive ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}" >
+                    <button data-category="${cat}"
+                        class="px-4 py-2 text-sm font-medium rounded-full transition duration-150 ${isSelected ? 'bg-teal-600 text-white shadow-md' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}"
+                    >
                         ${cat}
                     </button>
                 `;
             }).join('');
 
             container.innerHTML = categoriesHtml;
+
             // إعادة ربط حدث النقر
             container.querySelectorAll('button').forEach(button => {
                 button.addEventListener('click', (e) => {
@@ -1234,7 +1507,6 @@
 
                     // يتم التعامل مع الحالات الخاصة (الكمية المنخفضة والمنتهية) داخل renderApp/filterInventory
                     renderApp();
-
                 });
             });
         };
@@ -1242,71 +1514,66 @@
         const renderInventoryRow = (item) => {
             const isLow = item.quantity <= item.minQuantity;
             const isExpired = item.expiryDate && new Date(item.expiryDate) < new Date();
-            const isNearExpiry = item.expiryDate && new Date(item.expiryDate) < new Date(new Date().setMonth(new Date().getMonth() + 3)) && !isExpired;
+            const threeMonthsFromNow = new Date(new Date().setMonth(new Date().getMonth() + 3));
+            const isNearExpiry = item.expiryDate && new Date(item.expiryDate) < threeMonthsFromNow && !isExpired;
 
-            let statusColor = 'text-green-600 bg-green-100';
-            let statusIcon = 'check-circle';
-            let statusText = 'متوفر';
+            // 💥 حساب الربح والقيمة
+            const profitPerUnit = item.publicPrice - item.costPrice;
+            const totalPotentialProfit = item.quantity * profitPerUnit;
+            const totalCost = item.quantity * item.costPrice;
+            const totalPublic = item.quantity * item.publicPrice;
+
+            let statusText = 'متاح';
+            let statusColor = 'bg-gray-100 text-gray-800';
+            let statusIcon = 'check';
+            let expiryColor = 'text-gray-700';
 
             if (isExpired) {
-                statusColor = 'text-red-600 bg-red-100';
-                statusIcon = 'skull';
                 statusText = 'منتهي الصلاحية';
-            } else if (isLow) {
-                statusColor = 'text-red-600 bg-red-100';
-                statusIcon = 'alert-triangle';
-                statusText = 'كمية منخفضة';
+                statusColor = 'bg-red-100 text-red-800';
+                statusIcon = 'skull';
+                expiryColor = 'text-red-600 font-bold';
             } else if (isNearExpiry) {
-                statusColor = 'text-yellow-600 bg-yellow-100';
-                statusIcon = 'clock';
                 statusText = 'قرب الانتهاء';
+                statusColor = 'bg-yellow-100 text-yellow-800';
+                statusIcon = 'alert-triangle';
+                expiryColor = 'text-yellow-600 font-bold';
+            } else if (isLow) {
+                statusText = 'كمية منخفضة';
+                statusColor = 'bg-orange-100 text-orange-800';
+                statusIcon = 'minus-circle';
             }
 
-            const getExpiryDisplay = (dateStr) => {
-                if (!dateStr) return 'غير محدد';
-                const date = new Date(dateStr);
-                // تحقق من صلاحية التاريخ (قد تكون القراءة من الملف لا تزال غير صحيحة)
-                if (isNaN(date.getTime())) return 'خطأ في التاريخ';
+            // تطبيق حالة الفلتر الخاص على الصف
+            if (currentFilter.category === 'كمية منخفضة' && !isLow) return '';
+            if (currentFilter.category === 'منتهي الصلاحية' && !isExpired) return '';
+            if (currentFilter.category === 'قرب الانتهاء' && !isNearExpiry) return '';
 
-                return date.toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
-            };
-
-            // حساب القيمة
-            const totalCost = (item.quantity * item.costPrice);
-            const totalPublic = (item.quantity * item.publicPrice);
 
             return `
-                <tr class="hover:bg-gray-50 transition duration-150 border-b border-gray-200">
-                    <td data-label="اسم الصنف" class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        ${item.name}
-                        <p class="text-xs text-gray-500 font-mono mt-1">#${item.code}</p>
+                <tr class="${isExpired ? 'bg-red-50 hover:bg-red-100' : (isLow ? 'bg-yellow-50 hover:bg-yellow-100' : 'hover:bg-gray-50')} transition duration-150">
+                    <td data-label="الكود" class="px-3 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${item.code || 'N/A'}</td>
+                    <td data-label="اسم الصنف" class="px-3 py-4 whitespace-nowrap text-sm text-gray-900">${item.name}</td>
+                    <td data-label="الكمية" class="px-3 py-4 whitespace-nowrap text-sm font-bold ${isLow ? 'text-red-600' : 'text-teal-700'}">${formatNumber(item.quantity.toFixed(2))}</td>
+                    <td data-label="سعر التكلفة" class="px-3 py-4 whitespace-nowrap text-sm text-gray-700">${formatNumber(item.costPrice.toFixed(2))} ج.م</td>
+                    <td data-label="سعر الجمهور" class="px-3 py-4 whitespace-nowrap text-sm text-gray-700">${formatNumber(item.publicPrice.toFixed(2))} ج.م</td>
+                    <td data-label="إجمالي التكلفة" class="px-3 py-4 whitespace-nowrap text-sm text-gray-500">${formatNumber(totalCost.toFixed(2))} ج.م</td>
+                    <td data-label="إجمالي البيع" class="px-3 py-4 whitespace-nowrap text-sm text-gray-500">${formatNumber(totalPublic.toFixed(2))} ج.م</td>
+                    <td data-label="الربح/الوحدة" class="px-3 py-4 whitespace-nowrap text-sm text-green-700">${formatNumber(profitPerUnit.toFixed(2))} ج.م</td>
+                    <td data-label="الإجمالي المحتمل" class="px-3 py-4 whitespace-nowrap text-sm text-teal-600 font-bold">${formatNumber(totalPotentialProfit.toFixed(2))} ج.م</td>
+                    <td data-label="تاريخ الانتهاء" class="px-3 py-4 whitespace-nowrap text-sm ${expiryColor}">
+                        ${item.expiryDate || 'N/A'}
                     </td>
-                    <td data-label="الفئة" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.category}</td>
-                    <td data-label="الكمية" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-bold">${formatNumber(item.quantity)}</td>
-                    <td data-label="تاريخ الانتهاء" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        ${getExpiryDisplay(item.expiryDate)}
-                    </td>
-                    
-                    <td data-label="التكلفة/الجمهور" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <span class="block text-xs text-indigo-700 font-semibold">ت: ${formatNumber(item.costPrice)}</span>
-                        <span class="block text-xs text-green-700 font-semibold">ج: ${formatNumber(item.publicPrice)}</span>
-                    </td>
-                    <td data-label="إجمالي القيمة" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <span class="block text-xs text-indigo-700 font-semibold">ت: ${formatNumber(totalCost)}</span>
-                        <span class="block text-xs text-green-700 font-semibold">ج: ${formatNumber(totalPublic)}</span>
-                    </td>
-
-                    <td data-label="الحالة" class="px-6 py-4 whitespace-nowrap">
-                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColor} flex items-center">
-                            <i data-lucide="${statusIcon}" class="w-4 h-4 ml-1"></i>
+                    <td data-label="الحالة" class="px-3 py-4 whitespace-nowrap">
+                        <span class="inline-flex items-center px-3 py-0.5 rounded-full text-xs font-medium ${statusColor}">
+                            <i data-lucide="${statusIcon}" class="w-3 h-3 ml-1"></i>
                             ${statusText}
                         </span>
                     </td>
-
-                    <td data-label="الإجراءات" class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <td data-label="الإجراءات" class="px-3 py-4 whitespace-nowrap text-left text-sm font-medium">
                         <div class="flex space-x-2 space-x-reverse justify-end">
                             <button onclick="window.openAddEditModal('${item.id}')" title="تعديل"
-                                class="text-indigo-600 hover:text-indigo-900 p-1 rounded-full hover:bg-indigo-100 transition">
+                                class="text-teal-600 hover:text-teal-900 p-1 rounded-full hover:bg-teal-100 transition">
                                 <i data-lucide="square-pen" class="w-5 h-5"></i>
                             </button>
                             <button onclick="window.openAuditModal('${item.id}')" title="جرد ومطابقة"
@@ -1324,204 +1591,286 @@
         };
 
         const renderApp = () => {
-            renderStats();
-            renderCategoryFilter();
-
-            let itemsToDisplay = [...inventory];
-
-            // تطبيق فلاتر الحالات الخاصة
-            if (currentFilter.category === 'كمية منخفضة') {
-                itemsToDisplay = inventory.filter(i => i.quantity <= i.minQuantity);
-            } else if (currentFilter.category === 'منتهي الصلاحية') {
-                itemsToDisplay = inventory.filter(i => i.expiryDate && new Date(i.expiryDate) < new Date());
-            } else if (currentFilter.category === 'قرب الانتهاء') {
-                itemsToDisplay = inventory.filter(i => i.expiryDate && new Date(i.expiryDate) < new Date(new Date().setMonth(new Date().getMonth() + 3)) && new Date(i.expiryDate) >= new Date());
-            } else {
-                itemsToDisplay = filterInventory(itemsToDisplay);
+            // التحقق من وجود مستخدم قبل عرض التطبيق
+            if (!userId) {
+                // قد يتم استدعاء هذه الدالة قبل onAuthStateChanged، لذلك نخرج
+                return;
             }
 
+            const filteredItems = filterInventory(inventory);
+            const tbody = document.getElementById('inventory-tbody');
+            const itemsToRender = filteredItems.map(item => renderInventoryRow(item)).join('');
 
-            const tableBody = document.getElementById('inventory-tbody');
-            tableBody.innerHTML = itemsToDisplay.map(renderInventoryRow).join('');
+            tbody.innerHTML = itemsToRender || `
+                <tr>
+                    <td colspan="12" class="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
+                        لا توجد أصناف تطابق معايير البحث أو التصفية.
+                    </td>
+                </tr>
+            `;
 
-            // تحديث رموز Lucide
+            calculateTotals(filteredItems);
+            renderCategoryFilter();
+            // إعادة إنشاء أيقونات lucide بعد تحديث المحتوى
             if (typeof lucide !== 'undefined') { lucide.createIcons(); }
         };
 
-        const setupEventListeners = () => {
-            document.getElementById('add-item-button').addEventListener('click', () => window.openAddEditModal()); // تم تعديل الاستدعاء هنا أيضاً
-            document.getElementById('import-file-button').addEventListener('click', openImportModal);
-
+        // --- Event Listeners ---
+        document.addEventListener('DOMContentLoaded', () => {
+            authenticateAndStart();
+            // ربط أحداث الفلاتر والبحث
             document.getElementById('search-input').addEventListener('input', (e) => {
                 currentFilter.query = e.target.value;
-                currentFilter.category = 'الكل'; // مسح الفلترة بالفئة عند البحث
+                currentFilter.category = 'الكل'; // إزالة تصفية الفئة عند البحث
                 renderApp();
             });
 
-            // ربط أحداث النقر بالفرز على رؤوس الأعمدة
-            document.querySelectorAll('th[data-sort]').forEach(header => {
+            // ربط أحداث فرز الجدول
+            document.querySelectorAll('#inventory-table th[data-sort]').forEach(header => {
                 header.addEventListener('click', (e) => {
                     const column = e.currentTarget.dataset.sort;
                     handleSortChange(column);
                 });
             });
 
-            // بدء المصادقة
+            // ربط زر إضافة صنف جديد
+            document.getElementById('add-item-button').addEventListener('click', () => window.openAddEditModal());
+            document.getElementById('import-file-button').addEventListener('click', openImportModal);
+            document.getElementById('logout-button').addEventListener('click', window.handleLogout);
+            document.getElementById('delete-all-button').addEventListener('click', window.openDeleteAllConfirmModal);
+
+        });
+
+        // 💥 بدء التشغيل
+        // نضعها هنا أيضاً لضمان استدعائها إذا كان ملف index.html في بيئة لا تدعم DOMContentLoaded
+        // (على الرغم من أن DOMContentLoaded هو الأفضل دائماً)
+        if (document.readyState === 'complete' || document.readyState === 'interactive') {
             authenticateAndStart();
-        };
+        }
 
-        document.addEventListener('DOMContentLoaded', setupEventListeners);
     </script>
-</head>
 
-<body>
-    <div id="loading-state" class="fixed inset-0 bg-white bg-opacity-90 flex items-center justify-center z-[100] hidden"
-        dir="ltr">
-        <div class="text-center">
-            <svg class="animate-spin h-10 w-10 text-indigo-600 mx-auto mb-3" xmlns="http://www.w3.org/2000/svg"
-                fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
-                </path>
-            </svg>
-            <p class="text-lg text-gray-700 font-semibold">جاري تحميل البيانات...</p>
+    <div id="loading-state" class="fixed inset-0 bg-white z-50 flex items-center justify-center flex-col">
+        <i data-lucide="loader-2" class="w-12 h-12 text-teal-500 animate-spin"></i>
+        <p class="mt-4 text-gray-700 font-semibold">جاري تحميل البيانات...</p>
+    </div>
+
+    <div id="login-page" class="hidden min-h-screen flex items-center justify-center bg-gray-100" dir="rtl">
+        <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md">
+            <div class="text-center mb-6">
+                <i data-lucide="syringe" class="w-10 h-10 text-teal-600 mx-auto mb-2"></i>
+                <h2 class="text-3xl font-extrabold text-gray-900">نظام إدارة المخزون الصيدلي</h2>
+                <p class="text-gray-500 mt-2">يرجى تسجيل الدخول للوصول إلى بيانات المخزون</p>
+            </div>
+
+            <!-- <div class="flex border-b mb-6">
+                <button id="login-title" onclick="window.toggleForm('login')" class="flex-1 py-3 text-center transition duration-150">تسجيل الدخول</button>
+                <button id="register-title" onclick="window.toggleForm('register')" class="flex-1 py-3 text-center transition duration-150">إنشاء حساب جديد</button>
+            </div> -->
+
+
+            <div id="login-form-container" class="hidden">
+                <form id="login-form" onsubmit="window.handleLogin(event)" class="space-y-4">
+                    <div>
+                        <label for="email" class="block text-sm font-medium text-gray-700 mb-1">البريد الإلكتروني</label>
+                        <div class="relative rounded-md shadow-sm">
+                            <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
+                                <i data-lucide="mail" class="w-5 h-5"></i>
+                            </div>
+                            <input type="email" name="email" id="email" required placeholder="example@domain.com"
+                                class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2 text-right focus:border-teal-500 focus:ring-teal-500 text-sm" dir="ltr">
+                        </div>
+                    </div>
+                    <div>
+                        <label for="password" class="block text-sm font-medium text-gray-700 mb-1">كلمة المرور</label>
+                        <div class="relative rounded-md shadow-sm">
+                            <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
+                                <i data-lucide="lock" class="w-5 h-5"></i>
+                            </div>
+                            <input type="password" name="password" id="password" required placeholder="********"
+                                class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2 text-right focus:border-teal-500 focus:ring-teal-500 text-sm" dir="ltr">
+                        </div>
+                    </div>
+                    <div id="login-error-message"></div>
+                    <button type="submit" id="login-submit-button"
+                        class="w-full px-4 py-2 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition duration-150 shadow-md flex items-center justify-center mt-6">
+                        <i data-lucide="log-in" class="w-5 h-5 ml-2"></i> تسجيل الدخول
+                    </button>
+                </form>
+            </div>
+
+
+            <div id="register-form-container" class="hidden">
+                <form id="register-form" onsubmit="window.handleRegister(event)" class="space-y-4">
+                    <div>
+                        <label for="regEmail" class="block text-sm font-medium text-gray-700 mb-1">البريد الإلكتروني</label>
+                        <div class="relative rounded-md shadow-sm">
+                            <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
+                                <i data-lucide="mail" class="w-5 h-5"></i>
+                            </div>
+                            <input type="email" name="regEmail" id="regEmail" required placeholder="example@domain.com"
+                                class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2 text-right focus:border-teal-500 focus:ring-teal-500 text-sm" dir="ltr">
+                        </div>
+                    </div>
+                    <div>
+                        <label for="regPassword" class="block text-sm font-medium text-gray-700 mb-1">كلمة المرور (6 أحرف على الأقل)</label>
+                        <div class="relative rounded-md shadow-sm">
+                            <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
+                                <i data-lucide="lock" class="w-5 h-5"></i>
+                            </div>
+                            <input type="password" name="regPassword" id="regPassword" required minlength="6" placeholder="********"
+                                class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2 text-right focus:border-teal-500 focus:ring-teal-500 text-sm" dir="ltr">
+                        </div>
+                    </div>
+                    <div id="register-error-message"></div>
+                    <button type="submit" id="register-submit-button"
+                        class="w-full px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition duration-150 shadow-md flex items-center justify-center mt-6">
+                        <i data-lucide="user-plus" class="w-5 h-5 ml-2"></i> إنشاء حساب جديد
+                    </button>
+                </form>
+                <p class="text-center text-sm text-gray-500 pt-4">سيتم تسجيل الدخول تلقائياً بعد إنشاء الحساب.</p>
+            </div>
         </div>
     </div>
 
-    <header class="bg-white shadow-md">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-            <h1 class="text-3xl font-bold text-indigo-700 flex items-center">
-                <i data-lucide="home" class="w-6 h-6 ml-2"></i> لوحة تحكم المخزون
-            </h1>
-            <div class="flex space-x-4 space-x-reverse">
-                <button id="import-file-button"
-                    class="px-4 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition duration-150 shadow-md flex items-center">
-                    <i data-lucide="upload" class="w-5 h-5 ml-2"></i> استيراد ملف حركة
-                </button>
-                <button id="add-item-button"
-                    class="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition duration-150 shadow-md flex items-center">
-                    <i data-lucide="plus" class="w-5 h-5 ml-2"></i> إضافة صنف جديد
-                </button>
-            </div>
-        </div>
-    </header>
 
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div id="main-app" class="hidden">
+        <header class="bg-white shadow-md">
+            <div class="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between items-center py-4">
+                    <h1 class="text-3xl font-extrabold text-gray-900 flex items-center">
+                        <i data-lucide="syringe" class="w-8 h-8 text-teal-600 ml-2"></i>
+                        نظام إدارة المخزون الصيدلي
+                    </h1>
 
-        <div id="data-error-message"></div>
-
-        <section id="stats-section" class="mb-8">
-            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4">
-
-                <div class="bg-blue-50 p-4 rounded-lg shadow-sm flex flex-col items-center">
-                    <i data-lucide="package" class="w-6 h-6 text-blue-600 mb-1"></i>
-                    <p class="text-xs font-medium text-gray-500">إجمالي الأصناف</p>
-                    <p id="total-items-count" class="text-xl font-bold text-blue-700 mt-1">0</p>
-                </div>
-
-                <div class="bg-red-50 p-4 rounded-lg shadow-sm flex flex-col items-center">
-                    <i data-lucide="alert-triangle" class="w-6 h-6 text-red-600 mb-1"></i>
-                    <p class="text-xs font-medium text-gray-500">كمية منخفضة</p>
-                    <p id="low-stock-count" class="text-xl font-bold text-red-700 mt-1">0</p>
-                </div>
-
-                <div class="bg-red-50 p-4 rounded-lg shadow-sm flex flex-col items-center">
-                    <i data-lucide="skull" class="w-6 h-6 text-red-600 mb-1"></i>
-                    <p class="text-xs font-medium text-gray-500">منتهي الصلاحية</p>
-                    <p id="expired-count" class="text-xl font-bold text-red-700 mt-1">0</p>
-                </div>
-
-                <div class="bg-yellow-50 p-4 rounded-lg shadow-sm flex flex-col items-center">
-                    <i data-lucide="clock" class="w-6 h-6 text-yellow-600 mb-1"></i>
-                    <p class="text-xs font-medium text-gray-500">قرب الانتهاء</p>
-                    <p id="near-expiry-count" class="text-xl font-bold text-yellow-700 mt-1">0</p>
-                </div>
-
-                <div class="bg-green-50 p-4 rounded-lg shadow-sm flex flex-col items-center">
-                    <i data-lucide="check-circle" class="w-6 h-6 text-green-600 mb-1"></i>
-                    <p class="text-xs font-medium text-gray-500">كمية جيدة</p>
-                    <p id="good-stock-count" class="text-xl font-bold text-green-700 mt-1">0</p>
-                </div>
-
-                <div class="bg-indigo-50 p-4 rounded-lg shadow-sm flex flex-col items-center">
-                    <i data-lucide="building-2" class="w-6 h-6 text-indigo-600 mb-1"></i>
-                    <p class="text-xs font-medium text-gray-500">إجمالي قيمة التكلفة</p>
-                    <p id="total-cost-value" class="text-xl font-bold text-indigo-700 mt-1">0</p>
-                </div>
-
-                <div class="bg-lime-50 p-4 rounded-lg shadow-sm flex flex-col items-center">
-                    <i data-lucide="dollar-sign" class="w-6 h-6 text-lime-600 mb-1"></i>
-                    <p class="text-xs font-medium text-gray-500">إجمالي قيمة الجمهور</p>
-                    <p id="total-public-value" class="text-xl font-bold text-lime-700 mt-1">0</p>
-                </div>
-
-            </div>
-        </section>
-
-        <div class="bg-white shadow-lg rounded-lg p-6 mb-8">
-            <div class="flex flex-wrap items-center justify-between mb-4 -mx-2">
-                <div class="px-2 w-full md:w-1/3 order-2 md:order-1 mb-4 md:mb-0">
-                    <div class="relative">
-                        <input type="text" id="search-input" placeholder="البحث باسم الصنف أو الكود أو الفئة..."
-                            class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2 text-right focus:border-indigo-500 focus:ring-indigo-500 text-sm"
-                            dir="rtl">
-                        <div
-                            class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
-                            <i data-lucide="search" class="w-5 h-5"></i>
-                        </div>
+                    <div class="flex items-center space-x-4 space-x-reverse">
+                        <button id="import-file-button" title="استيراد من ملف"
+                            class="p-2 rounded-full bg-teal-50 text-teal-600 hover:bg-teal-100 transition duration-150">
+                            <i data-lucide="file-up" class="w-6 h-6"></i>
+                        </button>
+                        <button id="add-item-button" title="إضافة صنف جديد"
+                            class="px-4 py-2 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition duration-150 shadow-md flex items-center">
+                            <i data-lucide="plus-circle" class="w-5 h-5 ml-2"></i> إضافة صنف
+                        </button>
+                        <button id="logout-button" title="تسجيل الخروج"
+                            class="p-2 rounded-full text-gray-600 hover:bg-gray-100 transition duration-150">
+                            <i data-lucide="log-out" class="w-6 h-6"></i>
+                        </button>
+                        <button id="delete-all-button" title="حذف كل البيانات (تحذير!)"
+                            class="p-2 rounded-full text-red-600 hover:bg-red-100 transition duration-150">
+                            <i data-lucide="database-zap" class="w-6 h-6"></i>
+                        </button>
                     </div>
                 </div>
-                <div id="category-filter-container"
-                    class="px-2 w-full md:w-2/3 order-1 md:order-2 flex flex-wrap gap-2 justify-start md:justify-end">
+            </div>
+        </header>
+
+        <main class="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+            <div id="data-error-message"></div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                <div class="bg-blue-50 p-4 rounded-lg shadow-sm flex flex-col items-center">
+                    <i data-lucide="package" class="w-6 h-6 text-blue-600 mb-1"></i>
+                    <p class="text-xs font-medium text-gray-500">إجمالي الوحدات</p>
+                    <p id="total-quantity" class="text-xl font-bold text-blue-700 mt-1">0</p>
+                </div>
+                <div class="bg-orange-50 p-4 rounded-lg shadow-sm flex flex-col items-center">
+                    <i data-lucide="banknote" class="w-6 h-6 text-orange-600 mb-1"></i>
+                    <p class="text-xs font-medium text-gray-500">إجمالي قيمة التكلفة</p>
+                    <p id="total-cost-value" class="text-xl font-bold text-orange-700 mt-1">0 ج.م</p>
+                </div>
+                <div class="bg-teal-50 p-4 rounded-lg shadow-sm flex flex-col items-center">
+                    <i data-lucide="wallet" class="w-6 h-6 text-teal-600 mb-1"></i>
+                    <p class="text-xs font-medium text-gray-500">إجمالي قيمة البيع (جمهور)</p>
+                    <p id="total-public-value" class="text-xl font-bold text-teal-700 mt-1">0 ج.م</p>
+                </div>
+                <div class="bg-green-50 p-4 rounded-lg shadow-sm flex flex-col items-center">
+                    <i data-lucide="trending-up" class="w-6 h-6 text-green-600 mb-1"></i>
+                    <p class="text-xs font-medium text-gray-500">إجمالي الربح المحتمل</p>
+                    <p id="total-potential-profit" class="text-xl font-bold text-green-700 mt-1">0 ج.م</p>
+                </div>
+                </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-md mb-8">
+                <h3 class="text-lg font-bold text-gray-800 mb-4">البحث والتصفية</h3>
+                <div class="mb-4">
+                    <div class="relative">
+                        <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
+                            <i data-lucide="search" class="w-5 h-5"></i>
+                        </div>
+                        <input type="text" id="search-input" placeholder="ابحث بكود أو اسم أو فئة الصنف..."
+                            class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2.5 text-right focus:border-teal-500 focus:ring-teal-500 text-sm">
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap gap-2" id="category-filters">
+                    </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-lg overflow-x-auto">
+                <div class="inline-block min-w-full align-middle">
+                    <table id="inventory-table" class="min-w-full divide-y divide-gray-200 responsive-table">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th scope="col" data-sort="code"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition">
+                                    الكود
+                                </th>
+                                <th scope="col" data-sort="name"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition">
+                                    اسم الصنف
+                                </th>
+                                <th scope="col" data-sort="quantity"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition">
+                                    الكمية
+                                </th>
+                                <th scope="col" data-sort="costPrice"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition">
+                                    سعر التكلفة
+                                </th>
+                                <th scope="col" data-sort="publicPrice"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition">
+                                    سعر الجمهور
+                                </th>
+                                <th scope="col"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    إجمالي التكلفة
+                                </th>
+                                <th scope="col"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    إجمالي البيع
+                                </th>
+                                <th scope="col"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    الربح المحتمل/الوحدة
+                                </th>
+                                <th scope="col"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    الإجمالي المحتمل
+                                </th>
+                                <th scope="col" data-sort="expiryDate"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition">
+                                    تاريخ الانتهاء
+                                </th>
+                                <th scope="col"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    الحالة
+                                </th>
+                                <th scope="col"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    الإجراءات
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventory-tbody" class="bg-white divide-y divide-gray-200">
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
-            <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200 responsive-table">
-                    <thead class="bg-gray-50">
-                        <tr>
-                            <th scope="col" data-sort="name"
-                                class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition">
-                                اسم الصنف
-                            </th>
-                            <th scope="col" data-sort="category"
-                                class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition">
-                                الفئة
-                            </th>
-                            <th scope="col" data-sort="quantity"
-                                class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition">
-                                الكمية
-                            </th>
-                            <th scope="col" data-sort="expiryDate"
-                                class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition">
-                                تاريخ الانتهاء
-                            </th>
-                            <th scope="col"
-                                class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                التكلفة/الجمهور
-                            </th>
-                            <th scope="col"
-                                class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                إجمالي القيمة
-                            </th>
-                            <th scope="col"
-                                class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                الحالة
-                            </th>
-                            <th scope="col"
-                                class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                الإجراءات
-                            </th>
-                        </tr>
-                    </thead>
-                    <tbody id="inventory-tbody" class="bg-white divide-y divide-gray-200">
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-    </main>
+        </main>
+    </div>
 </body>
 
 </html>

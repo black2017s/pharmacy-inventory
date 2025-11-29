@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تقارير الجرد</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+
+    <style>
+        body {
+            font-family: 'Cairo', sans-serif;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100">
+
+    <header class="bg-teal-600 text-white py-4 shadow">
+        <div class="max-w-6xl mx-auto flex items-center justify-between px-4">
+            <h1 class="text-2xl font-bold flex items-center">
+                <i data-lucide="clipboard-list" class="w-6 h-6 ml-2"></i>
+                تقارير الجرد
+            </h1>
+
+            <a href="index.html"
+                class="bg-white text-teal-700 px-4 py-2 rounded-lg font-semibold shadow hover:bg-gray-200">
+                العودة للمخزون
+            </a>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto mt-6 p-4 bg-white rounded-lg shadow">
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+            <div class="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <h2 class="text-lg font-bold text-red-700">إجمالي العجز المالي</h2>
+                <p id="total-loss" class="text-2xl font-extrabold text-red-800 mt-2">0</p>
+            </div>
+
+            <div class="p-4 bg-green-50 border border-green-200 rounded-lg">
+                <h2 class="text-lg font-bold text-green-700">إجمالي الزيادة المالية</h2>
+                <p id="total-profit" class="text-2xl font-extrabold text-green-800 mt-2">0</p>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-300">
+                <thead class="bg-gray-100">
+                    <tr>
+                        <th class="px-3 py-2 text-right text-sm font-semibold text-gray-600">الكود</th>
+                        <th class="px-3 py-2 text-right text-sm font-semibold text-gray-600">اسم الصنف</th>
+                        <th class="px-3 py-2 text-right text-sm font-semibold text-gray-600">الفرق (وحدة)</th>
+                        <th class="px-3 py-2 text-right text-sm font-semibold text-gray-600">القيمة المالية</th>
+                        <th class="px-3 py-2 text-right text-sm font-semibold text-gray-600">المستخدم</th>
+                        <th class="px-3 py-2 text-right text-sm font-semibold text-gray-600">التاريخ</th>
+                    </tr>
+                </thead>
+                <tbody id="audit-tbody" class="divide-y divide-gray-200">
+                    <tr>
+                        <td colspan="6" class="p-4 text-center text-gray-500">جاري تحميل التقارير...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+    </main>
+
+    <script type="module">
+        import {
+            getFirestore, collection, getDocs
+        } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+        import { 
+            initializeApp 
+        } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+        // 🆕 استيراد مكتبة المصادقة
+        import {
+            getAuth, onAuthStateChanged
+        } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
+
+
+        // Firebase Config (نفس الموجود في index.html)
+        const firebaseConfig = {
+            apiKey: "AIzaSyA4BNXa8M324RgB3PN-EsbS8qEE2Grapfo",
+            authDomain: "pharmacy-inventory-24e09.firebaseapp.com",
+            projectId: "pharmacy-inventory-24e09",
+            storageBucket: "pharmacy-inventory-24e09.firebasestorage.app",
+            messagingSenderId: "274983528396",
+            appId: "1:274983528396:web:1573e6d3600a0f20641f69",
+            measurementId: "G-PT6B0BXC4H"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        // 🆕 تهيئة خدمة المصادقة
+        const auth = getAuth(app); 
+
+        const rawAppId = firebaseConfig.appId || 'default-inventory';
+        const appId = rawAppId.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+        const auditCollection = collection(db, `artifacts/${appId}/shared_audit_reports`);
+
+        const tbody = document.getElementById("audit-tbody");
+        const totalLoss = document.getElementById("total-loss");
+        const totalProfit = document.getElementById("total-profit");
+
+        function format(num) {
+            return Number(num).toLocaleString("ar-EG");
+        }
+
+        async function loadReports() {
+            // إفراغ محتوى الجدول قبل التحميل
+            tbody.innerHTML = ''; 
+            
+            try {
+                // 🛑 هذا السطر هو الذي كان يسبب الخطأ إذا لم يتم تأكيد المصادقة
+                const snapshot = await getDocs(auditCollection);
+
+                let loss = 0;
+                let profit = 0;
+
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+
+                    if (!data) return;
+
+                    // تجميع الإجماليات
+                    if (data.varianceFinancialValue < 0) {
+                        loss += Math.abs(data.varianceFinancialValue);
+                    } else {
+                        profit += data.varianceFinancialValue;
+                    }
+
+                    // صف الجدول
+                    const row = `
+                    <tr>
+                        <td class="px-3 py-3 text-sm">${data.itemCode}</td>
+                        <td class="px-3 py-3 text-sm">${data.itemName}</td>
+                        <td class="px-3 py-3 text-sm ${data.variance < 0 ? "text-red-600" : "text-green-700"} font-bold">
+                            ${format(data.variance)}
+                        </td>
+                        <td class="px-3 py-3 text-sm ${data.varianceFinancialValue < 0 ? "text-red-600" : "text-green-700"} font-bold">
+                            ${format(data.varianceFinancialValue.toFixed(2))} ج.م
+                        </td>
+                        <td class="px-3 py-3 text-sm">${data.userId}</td>
+                        <td class="px-3 py-3 text-sm">${(new Date(data.timestamp)).toLocaleString("ar-EG")}</td>
+                    </tr>
+                    `;
+
+                    tbody.insertAdjacentHTML("beforeend", row);
+                });
+
+                totalLoss.textContent = format(loss.toFixed(2)) + " ج.م";
+                totalProfit.textContent = format(profit.toFixed(2)) + " ج.م";
+
+                if (snapshot.empty) {
+                     tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500">لا توجد تقارير جرد متاحة.</td></tr>';
+                }
+
+            } catch (error) {
+                console.error("Error loading reports:", error);
+                // عرض رسالة خطأ واضحة للمستخدم
+                tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-red-600 font-bold">حدث خطأ أثناء تحميل التقارير. يرجى التأكد من تسجيل الدخول.</td></tr>';
+            }
+
+
+            if (typeof lucide !== "undefined") lucide.createIcons();
+        }
+
+        // 🆕 تغليف loadReports بـ onAuthStateChanged
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                // المستخدم مسجل الدخول: ابدأ بتحميل التقارير
+                console.log("User is authenticated. UID:", user.uid);
+                loadReports();
+            } else {
+                // المستخدم غير مسجل الدخول: قم بعرض رسالة خطأ أو إعادة التوجيه
+                console.error("User not authenticated. Access denied by Firebase Security Rules.");
+                tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-red-600 font-bold">يرجى تسجيل الدخول لعرض التقارير.</td></tr>';
+            }
+        });
+        
+        // ❌ تم حذف loadReports() من هنا
+    </script>
+
+</body>
+
+</html>

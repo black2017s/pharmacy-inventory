@@ -13,7 +13,7 @@
 
         body {
             font-family: 'Cairo', sans-serif;
-            background-color: #f3f4f6;
+            background-color: #f3ff6;
         }
 
         /* Style for the responsive table on small screens */
@@ -83,9 +83,267 @@
         }
     </style>
 
+</head>
+
+<body>
+    <div id="loading-state" class="fixed inset-0 bg-white z-50 flex items-center justify-center flex-col">
+        <i data-lucide="loader-2" class="w-12 h-12 text-teal-500 animate-spin"></i>
+        <p class="mt-4 text-gray-700 font-semibold">جاري تحميل النظام...</p>
+    </div>
+
+    <div id="login-page" class="fixed inset-0 bg-gray-100 z-40 flex items-center justify-center hidden">
+        <div class="w-full max-w-md bg-white rounded-xl shadow-2xl overflow-hidden p-8" dir="rtl">
+            <div class="text-center mb-6">
+                <i data-lucide="lock" class="w-10 h-10 text-teal-600 mx-auto"></i>
+                <h1 class="text-3xl font-bold text-gray-800 mt-2">نظام إدارة المخزون</h1>
+            </div>
+
+            <div class="flex border-b border-gray-200 mb-6">
+                <button id="login-title" onclick="window.toggleForm('login')"
+                    class="flex-1 py-3 text-center text-lg font-bold text-teal-700 border-b-2 border-teal-600 transition duration-150">تسجيل
+                    الدخول</button>
+                <button id="register-title" onclick="window.toggleForm('register')"
+                    class="flex-1 py-3 text-center text-lg text-gray-500 hover:text-gray-700 transition duration-150">إنشاء
+                    حساب</button>
+            </div>
+
+            <div id="login-form-container">
+                <form id="login-form" onsubmit="window.handleLogin(event)" class="space-y-4">
+                    <div>
+                        <label for="email" class="block text-sm font-medium text-gray-700 mb-1">البريد الإلكتروني</label>
+                        <div class="relative rounded-md shadow-sm">
+                            <div
+                                class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
+                                <i data-lucide="mail" class="w-5 h-5"></i>
+                            </div>
+                            <input type="email" name="email" id="email" required placeholder="example@domain.com"
+                                class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2 text-right focus:border-teal-500 focus:ring-teal-500 text-sm"
+                                dir="ltr">
+                        </div>
+                    </div>
+                    <div>
+                        <label for="password" class="block text-sm font-medium text-gray-700 mb-1">كلمة المرور</label>
+                        <div class="relative rounded-md shadow-sm">
+                            <div
+                                class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
+                                <i data-lucide="key" class="w-5 h-5"></i>
+                            </div>
+                            <input type="password" name="password" id="password" required placeholder="كلمة المرور"
+                                class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2 text-right focus:border-teal-500 focus:ring-teal-500 text-sm"
+                                dir="ltr">
+                        </div>
+                    </div>
+                    <div id="login-error-message"></div>
+                    <button type="submit" id="login-submit-button"
+                        class="w-full px-4 py-2 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition duration-150 shadow-md flex items-center justify-center mt-6">
+                        <i data-lucide="log-in" class="w-5 h-5 ml-2"></i>
+                        تسجيل الدخول
+                    </button>
+                </form>
+            </div>
+
+            <div id="register-form-container" class="hidden">
+                <form id="register-form" onsubmit="window.handleRegister(event)" class="space-y-4">
+                    <div>
+                        <label for="regEmail" class="block text-sm font-medium text-gray-700 mb-1">البريد الإلكتروني</label>
+                        <div class="relative rounded-md shadow-sm">
+                            <div
+                                class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
+                                <i data-lucide="mail" class="w-5 h-5"></i>
+                            </div>
+                            <input type="email" name="regEmail" id="regEmail" required placeholder="example@domain.com"
+                                class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2 text-right focus:border-teal-500 focus:ring-teal-500 text-sm"
+                                dir="ltr">
+                        </div>
+                    </div>
+                    <div>
+                        <label for="regPassword" class="block text-sm font-medium text-gray-700 mb-1">كلمة المرور (6 أحرف
+                            على الأقل)</label>
+                        <div class="relative rounded-md shadow-sm">
+                            <div
+                                class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
+                                <i data-lucide="key" class="w-5 h-5"></i>
+                            </div>
+                            <input type="password" name="regPassword" id="regPassword" required placeholder="كلمة المرور"
+                                class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2 text-right focus:border-teal-500 focus:ring-teal-500 text-sm"
+                                dir="ltr">
+                        </div>
+                    </div>
+                    <div id="register-error-message"></div>
+                    <button type="submit" id="register-submit-button"
+                        class="w-full px-4 py-2 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition duration-150 shadow-md flex items-center justify-center mt-6">
+                        <i data-lucide="user-plus" class="w-5 h-5 ml-2"></i>
+                        إنشاء حساب جديد
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+
+    <div id="main-app" class="min-h-screen hidden">
+        <header class="bg-white shadow-sm">
+            <div
+                class="max-w-screen-2xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center" dir="rtl">
+                <h1 class="text-3xl font-bold leading-tight text-gray-900 flex items-center">
+                    <i data-lucide="box" class="w-7 h-7 ml-2 text-teal-600"></i>
+                    إدارة المخزون
+                </h1>
+                <div class="flex items-center space-x-3 space-x-reverse">
+                    <button id="audit-report-button"
+                        class="bg-blue-500 text-white p-2 rounded-full hover:bg-blue-600 transition shadow-md flex items-center"
+                        title="تقارير الجرد">
+                        <i data-lucide="clipboard-list" class="w-5 h-5"></i>
+                    </button>
+                    <button id="import-file-button"
+                        class="bg-indigo-500 text-white p-2 rounded-full hover:bg-indigo-600 transition shadow-md flex items-center"
+                        title="استيراد من ملف">
+                        <i data-lucide="file-up" class="w-5 h-5"></i>
+                    </button>
+                    <button id="add-item-button"
+                        class="bg-teal-600 text-white p-2 rounded-full hover:bg-teal-700 transition shadow-md flex items-center"
+                        title="إضافة صنف جديد">
+                        <i data-lucide="plus" class="w-5 h-5"></i>
+                    </button>
+                    <button id="logout-button"
+                        class="text-gray-500 hover:text-red-600 p-2 rounded-full hover:bg-red-50 transition"
+                        title="تسجيل الخروج">
+                        <i data-lucide="log-out" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main class="max-w-screen-2xl mx-auto py-6 px-4 sm:px-6 lg:px-8" dir="rtl">
+            <div id="data-error-message"></div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div class="bg-white p-4 rounded-lg shadow-sm flex flex-col items-center">
+                    <i data-lucide="package" class="w-6 h-6 text-teal-600 mb-1"></i>
+                    <p class="text-xs font-medium text-gray-500">إجمالي الكمية</p>
+                    <p id="total-quantity" class="text-xl font-bold text-teal-700 mt-1">0</p>
+                </div>
+                <div class="bg-orange-50 p-4 rounded-lg shadow-sm flex flex-col items-center">
+                    <i data-lucide="dollar-sign" class="w-6 h-6 text-orange-600 mb-1"></i>
+                    <p class="text-xs font-medium text-gray-500">إجمالي قيمة التكلفة</p>
+                    <p id="total-cost-value" class="text-xl font-bold text-orange-700 mt-1">0 ج.م</p>
+                </div>
+                <div class="bg-teal-50 p-4 rounded-lg shadow-sm flex flex-col items-center">
+                    <i data-lucide="wallet" class="w-6 h-6 text-teal-600 mb-1"></i>
+                    <p class="text-xs font-medium text-gray-500">إجمالي قيمة البيع (جمهور)</p>
+                    <p id="total-public-value" class="text-xl font-bold text-teal-700 mt-1">0 ج.م</p>
+                </div>
+                <div class="bg-green-50 p-4 rounded-lg shadow-sm flex flex-col items-center">
+                    <i data-lucide="trending-up" class="w-6 h-6 text-green-600 mb-1"></i>
+                    <p class="text-xs font-medium text-gray-500">الربح المحتمل الإجمالي</p>
+                    <p id="total-profit-value" class="text-xl font-bold text-green-700 mt-1">0 ج.م</p>
+                </div>
+            </div>
+
+            <div
+                class="bg-white p-6 rounded-lg shadow-lg mb-6 flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 sm:space-x-reverse items-center justify-between">
+                <div class="w-full sm:w-1/2">
+                    <label for="search-input" class="sr-only">البحث عن صنف</label>
+                    <div class="relative">
+                        <div
+                            class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
+                            <i data-lucide="search" class="w-5 h-5"></i>
+                        </div>
+                        <input type="text" id="search-input" placeholder="البحث بالاسم أو الكود أو الفئة..."
+                            class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2 text-right focus:border-teal-500 focus:ring-teal-500 text-sm"
+                            dir="rtl">
+                    </div>
+                </div>
+
+                <div class="w-full sm:w-1/4">
+                    <label for="category-filter" class="sr-only">تصفية حسب الفئة</label>
+                    <select id="category-filter"
+                        class="block w-full rounded-md border-gray-300 py-2.5 pl-4 pr-8 text-sm focus:border-teal-500 focus:ring-teal-500">
+                        </select>
+                </div>
+                <div class="w-full sm:w-1/4 flex justify-end space-x-3 space-x-reverse">
+                    <button id="delete-all-button"
+                        class="text-white bg-red-600 p-2 rounded-lg hover:bg-red-700 transition duration-150 shadow-md flex items-center text-sm font-semibold">
+                        <i data-lucide="database-zap" class="w-5 h-5 ml-2"></i>
+                        حذف جميع البيانات
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex flex-col">
+                <div class="align-middle inline-block min-w-full shadow overflow-hidden sm:rounded-lg">
+                    <table id="inventory-table" class="min-w-full divide-y divide-gray-200 responsive-table">
+                        <thead class="bg-gray-100">
+                            <tr>
+                                <th scope="col" data-sort="code"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition">
+                                    الكود
+                                </th>
+                                <th scope="col" data-sort="name"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition">
+                                    اسم الصنف
+                                </th>
+                                <th scope="col" data-sort="quantity"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition">
+                                    الكمية
+                                </th>
+                                <th scope="col" data-sort="minQuantity"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition">
+                                    الحد الأدنى
+                                </th>
+                                <th scope="col" data-sort="publicPrice"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition">
+                                    سعر الجمهور
+                                </th>
+                                <th scope="col" data-sort="costPrice"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition">
+                                    سعر التكلفة
+                                </th>
+                                <th scope="col" data-sort="category"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition">
+                                    الفئة
+                                </th>
+                                <th scope="col"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    الإجمالي (تكلفة)
+                                </th>
+                                <th scope="col"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    الإجمالي (جمهور)
+                                </th>
+                                <th scope="col"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    الربح المحتمل/الوحدة
+                                </th>
+                                <th scope="col"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    الإجمالي المحتمل
+                                </th>
+                                <th scope="col" data-sort="expiryDate"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition">
+                                    تاريخ الانتهاء
+                                </th>
+                                <th scope="col"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    الحالة
+                                </th>
+                                <th scope="col"
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    الإجراءات
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventory-tbody" class="bg-white divide-y divide-gray-200">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
     <script type="module">
         // ** Firebase Imports **
-        // 💥 التعديل الأول: إضافة getDocs لجلب كل الوثائق في المجموعة
         import { getFirestore, collection, addDoc, onSnapshot, updateDoc, doc, deleteDoc, query, orderBy, writeBatch, getDocs, setDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
         import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
@@ -140,6 +398,15 @@
             // 🌟 المسار موحد الآن لكل المستخدمين ولا يعتمد على userId
             return collection(db, `artifacts/${appId}/shared_inventory`);
         };
+        
+        // 🌟 دالة جديدة: جلب مرجع مجموعة تقارير الجرد
+        const getAuditReportsCollectionRef = () => {
+            const rawAppId = firebaseConfig.appId || 'default-inventory';
+            const appId = rawAppId.replace(/[^a-zA-Z0-9_-]/g, '_');
+            // 🌟 المسار موحد الآن لكل المستخدمين ولا يعتمد على userId
+            return collection(db, `artifacts/${appId}/shared_audit_reports`);
+        };
+
         // --- Utility Functions ---
 
         const formatNumber = (num) => new Intl.NumberFormat('ar-EG').format(num);
@@ -257,6 +524,68 @@
         const openModal = (modalHtml) => {
             document.body.insertAdjacentHTML('beforeend', modalHtml);
             if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+        };
+        
+        // ----------------------------------------------------
+        // 🌟 دالة مؤقتة لفتح نافذة عرض تقارير الجرد (الجديدة) 🌟
+        // ----------------------------------------------------
+        window.openViewAuditReportsModal = () => {
+    window.location.href = "audit-reports.html";
+};
+
+
+        // ----------------------------------------------------
+        // 🌟 دالة فتح نافذة قائمة تقارير الجرد (محدثة) 🌟
+        // ----------------------------------------------------
+        window.openAuditReportMenu = () => {
+            const modalHtml = `
+                <div id="audit-menu-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50" dir="rtl">
+                    <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all scale-100">
+                        <div class="p-6 border-b flex justify-between items-center bg-blue-50">
+                            <h2 class="text-2xl font-bold text-blue-700 flex items-center">
+                                <i data-lucide="clipboard-list" class="w-6 h-6 ml-2"></i>
+                                تقارير وحركات الجرد
+                            </h2>
+                            <button onclick="window.closeModal('audit-menu-modal')" class="text-gray-400 hover:text-gray-600" aria-label="إغلاق">
+                                <i data-lucide="x" class="w-6 h-6"></i>
+                            </button>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <p class="text-gray-700">
+                                يتم تسجيل تقارير الجرد تلقائياً عند استخدام خاصية <span class="font-semibold text-teal-600">"جرد ومطابقة صنف"</span> من جدول المخزون.
+                                كل تقرير يحتوي الآن على القيمة المالية للفرق بناءً على <span class="font-bold text-teal-600">سعر البيع (سعر الجمهور)</span> كما طلبت.
+                            </p>
+                            
+                            <button 
+                                type="button" 
+                                onclick="window.closeModal('audit-menu-modal'); window.openViewAuditReportsModal();" 
+                                class="w-full px-4 py-3 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition duration-150 shadow-md flex items-center justify-center text-lg"
+                            >
+                                <i data-lucide="eye" class="w-5 h-5 ml-2"></i>
+                                عرض سجل تقارير الجرد
+                            </button>
+                            <div class="bg-red-50 p-4 rounded-lg border border-red-200">
+                                <h3 class="text-lg font-bold text-red-700 flex items-center mb-2">
+                                    <i data-lucide="file-x" class="w-5 h-5 ml-2"></i>
+                                    إجراء خاص: حذف تقارير الجرد
+                                </h3>
+                                <p class="text-sm text-red-600 mb-4">
+                                    هذا الإجراء يحذف السجل التاريخي لتقارير الجرد فقط. <span class="font-bold">لا يؤثر على بيانات المخزون الحالية.</span>
+                                </p>
+                                <button 
+                                    type="button" 
+                                    onclick="window.closeModal('audit-menu-modal'); window.openDeleteAuditConfirmModal();" 
+                                    class="w-full px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition duration-150 shadow-md flex items-center justify-center text-sm"
+                                >
+                                    <i data-lucide="trash-2" class="w-5 h-5 ml-2"></i>
+                                    حذف جميع بيانات تقارير الجرد
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            openModal(modalHtml);
         };
 
         // --------------------------------------------------
@@ -505,7 +834,7 @@
                         name: 'اسم المنتج الأساسي (مطلوب)', // الاسم الأساسي
                         fallbackName: 'اسم المنتج البديل (اختياري - سيستخدم إذا كان الأساسي فارغاً)', // الحقل الجديد
                         publicPrice: 'سعر الجمهور (مطلوب)',
-                        minQuantity: 'الكمية',
+                        minQuantity: 'الحد الأدنى للكمية',
                         category: 'الفئة'
                     };
                 case 'purchases':
@@ -558,7 +887,7 @@
                             </div>
                             
                             <div>
-                                <label for="fileInput" class="block text-sm font-medium text-gray-700 mb-1">تحميل ملف Excel (.xlsx, .csv)</label>
+                                <label for="fileInput" class="block text-sm font-medium text-gray-700 mb-1">تحميل ملف Excel (.xlsx, .xls, .csv)</label>
                                 <input type="file" id="fileInput" name="fileInput" accept=".xlsx, .xls, .csv" required multiple 
                                        class="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none p-2.5" />
                             </div>
@@ -798,59 +1127,49 @@
                     defaultValue = autoMatch;
                 }
 
-                // لحقل fallbackName و itemNameEnglish نجعل القيمة الافتراضية التجاهل لكونه اختياري (إذا لم تتم المطابقة التلقائية)
+                // لحقل fallbackName و itemNameEnglish نجعل القيمة الافتراضية التجاهل لكونه
                 if (key === 'fallbackName' || key === 'itemNameEnglish') {
                     defaultValue = '--- تجاهل هذا الحقل ---';
                 }
 
+                const optionsHtml = headers.map(header =>
+                    `<option value="${header}" ${header === defaultValue ? 'selected' : ''}>${header}</option>`
+                ).join('');
+
                 return `
                     <div>
-                        <label for="map_${key}" class="block text-sm font-medium text-gray-700 mb-1">${label}</label>
-                        <select id="map_${key}" name="${key}" required class="block w-full rounded-md border-gray-300 py-2.5 pl-4 pr-8 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <label for="map-${key}" class="block text-sm font-medium text-gray-700 mb-1">${label}</label>
+                        <select id="map-${key}" name="${key}" ${label.includes('(مطلوب)') ? 'required' : ''} class="block w-full rounded-md border-gray-300 py-2.5 pl-4 pr-8 text-sm focus:border-teal-500 focus:ring-teal-500">
                             ${ignoreOption}
-                            ${headers.map(h =>
-                    `<option value="${h}" ${h === defaultValue ? 'selected' : ''}>${h}</option>`
-                ).join('')}
+                            ${optionsHtml}
                         </select>
                     </div>
                 `;
             }).join('');
 
             container.innerHTML = mappingHtml;
-            if (typeof lucide !== 'undefined') { lucide.createIcons(); }
         };
+
 
         const handleImportSubmit = async (e) => {
             e.preventDefault();
-            const form = e.target;
+            const form = document.getElementById('import-mapping-form');
             const submitButton = document.getElementById('import-submit-button');
             const importType = importedData.type;
-            const headers = importedData.headers;
             const rows = importedData.rows;
 
-            if (!userId) {
-                alert('النظام غير مصادق بعد. حاول مرة أخرى.');
-                return;
-            }
-
-            // إنشاء قاموس للمطابقة
+            // جمع حقول المطابقة
             const mapping = {};
-            const requiredFields = getRequiredFields(importType);
             let isValidMapping = true;
 
-            Object.keys(requiredFields).forEach(key => {
-                const selectElement = form.querySelector(`[name="${key}"]`);
-                const selectedHeader = selectElement.value;
+            Object.keys(getRequiredFields(importType)).forEach(key => {
+                const selectElement = form.querySelector(`#map-${key}`);
+                mapping[key] = selectElement.value;
 
-                // التحقق من الحقول المطلوبة (غير الاختيارية)
-                if (!requiredFields[key].includes('(اختياري') && selectedHeader === '--- تجاهل هذا الحقل ---') {
-                    alert(`الرجاء مطابقة الحقل المطلوب: ${requiredFields[key]}`);
+                if (selectElement.required && mapping[key] === '--- تجاهل هذا الحقل ---') {
+                    alert(`الرجاء اختيار حقل لـ: ${getRequiredFields(importType)[key].split('(')[0].trim()}`);
                     isValidMapping = false;
                 }
-
-                // نجد فهرس العمود المقابل
-                const columnIndex = headers.indexOf(selectedHeader);
-                mapping[key] = columnIndex !== -1 ? columnIndex : selectedHeader; // استخدام الفهرس أو القيمة (للتجاهل)
             });
 
             if (!isValidMapping) return;
@@ -872,9 +1191,7 @@
             const updatedCodes = new Set(); // لتتبع الأصناف التي تم تحديثها من الملف
 
             for (const row of rows) {
-                let itemCode;
-
-                // يتم تحديد الكود بناءً على نوع الملف
+                let itemCode; // يتم تحديد الكود بناءً على نوع الملف
                 if (importType === 'items') {
                     itemCode = String(row[mapping.code] || '').trim() || null;
                 } else {
@@ -904,43 +1221,68 @@
                 // A. معالجة ملف الأصناف الأساسية (items)
                 // ----------------------------------------
                 if (importType === 'items') {
-                    const nameIndex = mapping.name;
-                    const publicPriceIndex = mapping.publicPrice;
-                    const minQtyIndex = mapping.minQuantity; // هذا هو عمود الكمية في ملفك
-                    const categoryIndex = mapping.category;
-                    const fallbackNameIndex = mapping.fallbackName;
+                    const name = String(row[mapping.name] || '').trim() || null;
+                    const fallbackName = mapping.fallbackName === '--- تجاهل هذا الحقل ---'
+                        ? null
+                        : String(row[mapping.fallbackName] || '').trim() || null;
 
-                    const name = String(row[nameIndex] || '').trim() || String(row[fallbackNameIndex] || '').trim() || updateData.name;
-                    const publicPrice = cleanNumberValue(row[publicPriceIndex]);
+                    const finalName = name || fallbackName || updateData.name;
 
-                    // 💡 (1) قراءة قيمة الكمية من الملف وتحويلها إلى رقم
-                    const quantityFromFile = cleanNumberValue(row[minQtyIndex]) || 0;
+                    // يجب أن يكون الاسم موجوداً في النهاية
+                    if (!finalName || finalName === 'غير محدد') {
+                        console.warn(`تجاهل الصنف ${itemCode} بسبب عدم وجود اسم.`);
+                        continue;
+                    }
 
-                    const category = String(row[categoryIndex] || '').trim() || updateData.category;
+                    const publicPrice = cleanNumberValue(row[mapping.publicPrice]);
+                    const minQuantity = cleanNumberValue(row[mapping.minQuantity]);
+                    const category = mapping.category === '--- تجاهل هذا الحقل ---'
+                        ? updateData.category
+                        : String(row[mapping.category] || '').trim() || updateData.category;
 
-                    updateData.name = name;
-                    updateData.publicPrice = publicPrice;
-
-                    // 🟢 (2) إضافة الكمية المأخوذة من الملف إلى الكمية الحالية للصنف
-                    updateData.quantity += quantityFromFile;
-
-                    // (3) نستخدم نفس القيمة لتحديث "الحد الأدنى للكمية" كما كان مقصوداً في الأصل
-                    // updateData.minQuantity = quantityFromFile;
-
+                    updateData.name = finalName;
+                    updateData.publicPrice = publicPrice > 0 ? publicPrice : updateData.publicPrice;
+                    updateData.minQuantity = minQuantity > 0 ? minQuantity : updateData.minQuantity;
                     updateData.category = category;
-
-                    // updateData.updatedAt = new Date().toISOString(); 
-                    // تم إزالة التعليق السابق الذي كان يمنع تغيير الكمية
                     updateData.updatedAt = new Date().toISOString();
-                } else if (importType === 'purchases') {
+
+                    // لا يتم تحديث الكمية (quantity) في هذا النوع من الملفات
+                }
+
+                // ----------------------------------------
+                // B. معالجة ملف المشتريات (purchases)
+                // ----------------------------------------
+                else if (importType === 'purchases') {
                     const qtyIndex = mapping.quantity;
                     const costIndex = mapping.costPrice;
+                    const priceIndex = mapping.publicPrice;
                     const expiryIndex = mapping.expiryDate;
 
                     const purchasedQuantity = cleanNumberValue(row[qtyIndex]);
                     const costPrice = cleanNumberValue(row[costIndex]);
+                    const publicPrice = cleanNumberValue(row[priceIndex]);
 
-                    // تحويل تاريخ الانتهاء
+                    // إذا كان الصنف غير موجود في المخزون الحالي (صنف جديد)
+                    if (!inventoryMap[itemCode]?.docId) {
+                        const transactionItemNameArabic = mapping.itemNameArabic === '--- تجاهل هذا الحقل ---' ? null : String(row[mapping.itemNameArabic] || '').trim() || null;
+                        const transactionItemNameEnglish = mapping.itemNameEnglish === '--- تجاهل هذا الحقل ---' ? null : String(row[mapping.itemNameEnglish] || '').trim() || null;
+                        const transactionItemName = transactionItemNameArabic || transactionItemNameEnglish;
+
+                        // تهيئة بيانات الصنف الجديد
+                        updateData.name = transactionItemName || `صنف جديد: ${itemCode}`;
+                        updateData.minQuantity = 0;
+                        updateData.category = 'غير مصنف';
+                    }
+
+                    // تحديث الأسعار: يتم اعتماد القيم الأحدث والأكبر من الصفر
+                    if (publicPrice > 0) {
+                        updateData.publicPrice = publicPrice;
+                    }
+                    if (costPrice > 0) {
+                        updateData.costPrice = costPrice;
+                    }
+
+                    // معالجة تاريخ الانتهاء
                     let expiryDate = null;
                     const expiryValue = row[expiryIndex];
 
@@ -968,7 +1310,7 @@
 
                     // تجميع: الكمية تتراكم، أما التكلفة وتاريخ الانتهاء فيتم اعتماد القيمة الأخيرة في الملف
                     updateData.quantity += purchasedQuantity;
-                    updateData.costPrice = costPrice; // آخر سعر هو السائد
+                    // updateData.costPrice = costPrice; // الأسعار يتم تحديثها أعلاه
                     if (expiryDate) {
                         updateData.expiryDate = expiryDate; // آخر تاريخ هو السائد
                     }
@@ -980,72 +1322,31 @@
                 } else if (importType === 'sales') {
                     const qtyIndex = mapping.quantity;
                     const priceIndex = mapping.publicPrice;
-
                     const soldQuantity = cleanNumberValue(row[qtyIndex]);
-                    const publicPrice = mapping.publicPrice === '--- تجاهل هذا الحقل ---' ?
-                        updateData.publicPrice : cleanNumberValue(row[priceIndex]);
 
-                    // خصم الكمية
+                    // إذا كان الصنف غير موجود في المخزون الحالي (صنف جديد)
+                    if (!inventoryMap[itemCode]?.docId) {
+                        const transactionItemNameArabic = mapping.itemNameArabic === '--- تجاهل هذا الحقل ---' ? null : String(row[mapping.itemNameArabic] || '').trim() || null;
+                        const transactionItemNameEnglish = mapping.itemNameEnglish === '--- تجاهل هذا الحقل ---' ? null : String(row[mapping.itemNameEnglish] || '').trim() || null;
+                        const transactionItemName = transactionItemNameArabic || transactionItemNameEnglish;
+
+                        // تهيئة بيانات الصنف الجديد
+                        updateData.name = transactionItemName || `صنف جديد: ${itemCode}`;
+                        updateData.minQuantity = 0;
+                        updateData.category = 'غير مصنف';
+                    }
+
+                    // تحديث السعر إذا كان موجوداً في ملف المبيعات
+                    if (mapping.publicPrice !== '--- تجاهل هذا الحقل ---') {
+                        const publicPrice = cleanNumberValue(row[priceIndex]);
+                        if (publicPrice > 0) {
+                            updateData.publicPrice = publicPrice;
+                        }
+                    }
+
+                    // خصم الكمية (لا يمكن أن تكون أقل من الصفر)
                     updateData.quantity = Math.max(0, updateData.quantity - soldQuantity);
-                    // تحديث سعر الجمهور (اختياري)
-                    updateData.publicPrice = publicPrice;
                     updateData.updatedAt = new Date().toISOString();
-                }
-
-                // ----------------------------------------------------
-                // ** منطق استخلاص الاسم من ملف الحركة (المشتريات/المبيعات) **
-                // ----------------------------------------------------
-                let transactionItemName = null;
-
-                if (importType === 'purchases' || importType === 'sales') {
-                    const arabicNameIndex = mapping.itemNameArabic;
-                    const englishNameIndex = mapping.itemNameEnglish;
-
-                    // استخلاص الاسم العربي
-                    const arabicName = (arabicNameIndex !== '--- تجاهل هذا الحقل ---' && arabicNameIndex !== undefined) ?
-                        String(row[arabicNameIndex] || '').trim() : '';
-
-                    // استخلاص الاسم الإنجليزي
-                    const englishName = (englishNameIndex !== '--- تجاهل هذا الحقل ---' && englishNameIndex !== undefined) ?
-                        String(row[englishNameIndex] || '').trim() : '';
-
-                    // الأولوية للاسم العربي، ثم الاسم الإنجليزي
-                    transactionItemName = arabicName || englishName;
-                }
-
-
-                // نتحقق إذا كان الصنف غير موجود في المخزون الحالي وتم إضافته من ملف مشتريات/مبيعات
-                if (!inventoryMap[itemCode] && (importType === 'purchases' || importType === 'sales')) {
-                    // إذا كان صنف حركة فقط، نضيف له الحد الأدنى = 0 والفئة = غير مصنف
-                    // ** نستخدم الاسم المستخلص من ملف الحركة (العربي ثم الإنجليزي) **
-                    updateData.name = transactionItemName || `صنف جديد: ${itemCode}`;
-                    updateData.minQuantity = 0;
-                    updateData.category = 'غير مصنف';
-                    updateData.publicPrice = updateData.publicPrice || 0;
-                    updateData.costPrice = updateData.costPrice || 0;
-                }
-                if (importType === 'purchases') {
-
-                    // يجب تحديد اسم الحقل في ملف الـ mapping بشكل صحيح
-                    const publicPriceIndex = mapping.publicPrice;
-                    const costIndex = mapping.costPrice || mapping.purchasePrice;
-
-                    // 1. قراءة القيم من الصف الحالي باستخدام مؤشرات الأعمدة
-                    const publicPrice = cleanNumberValue(row[publicPriceIndex]); // قراءة سعر البيع
-                    const costPrice = cleanNumberValue(row[costIndex]);          // قراءة سعر التكلفة
-
-                    // 2. تحديث الأسعار في بيانات الصنف (updateData)
-                    // نحدث فقط إذا كانت القيمة أكبر من الصفر
-                    if (publicPrice > 0) {
-                        updateData.publicPrice = publicPrice;
-                    }
-
-                    if (costPrice > 0) {
-                        updateData.costPrice = costPrice;
-                    }
-
-                    // 💡 ملاحظة: يجب أن يتبع هذا منطق تحديث الكمية وتاريخ الصلاحية هنا أيضًا
-                    // (لأنك في ملف المشتريات)
                 }
             }
 
@@ -1055,10 +1356,8 @@
             for (const itemCode of updatedCodes) {
                 const updateData = inventoryUpdates[itemCode];
                 const itemRef = updateData.docId ? doc(collectionRef, updateData.docId) : doc(collectionRef);
-
                 // حذف المفتاح غير المستخدم في الكتابة
                 delete updateData.docId;
-
                 batch.set(itemRef, {
                     code: itemCode,
                     ...updateData,
@@ -1082,25 +1381,15 @@
             }
         };
 
-
-        // ----------------------------------------------------------------------------------
-        // ** منطق إدارة الأصناف (Add/Edit, Delete, Audit) **
-        // ----------------------------------------------------------------------------------
-
-        // 💥 التعديل هنا: جعل الدالة عالمية (Global)
+        // ----------------------------------------------------
+        // ** منطق إضافة/تعديل صنف **
+        // ----------------------------------------------------
         window.openAddEditModal = (itemId = null) => {
+            currentItem = inventory.find(i => i.id === itemId) || {};
+            const { name = '', code = '', quantity = 0, minQuantity = 0, publicPrice = 0, costPrice = 0, category = inventoryCategories[0], expiryDate = null } = currentItem;
             const isEditing = !!itemId;
-            currentItem = isEditing ? inventory.find(i => i.id === itemId) : null;
+            const today = new Date().toISOString().substring(0, 10);
 
-            // يتم استخدام دالة cleanNumberValue لتنظيف القيمة قبل عرضها في حقل الإدخال
-            const code = currentItem?.code || '';
-            const name = currentItem?.name || '';
-            const quantity = currentItem?.quantity || 0;
-            const minQuantity = currentItem?.minQuantity || 0;
-            const publicPrice = currentItem?.publicPrice || 0;
-            const costPrice = currentItem?.costPrice || 0;
-            const expiryDate = currentItem?.expiryDate || '';
-            const category = currentItem?.category || inventoryCategories[0];
 
             const modalHtml = `
                 <div id="item-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50" dir="rtl">
@@ -1113,40 +1402,33 @@
                                 <i data-lucide="x" class="w-6 h-6"></i>
                             </button>
                         </div>
-                        <form id="item-form" class="p-6 space-y-6" data-mode="${isEditing ? 'edit' : 'add'}" data-item-id="${itemId || ''}">
+                        <form id="item-form" onsubmit="window.handleSaveItem(event)" class="p-6 space-y-6" data-mode="${isEditing ? 'edit' : 'add'}" data-item-id="${itemId || ''}">
                             <div class="grid grid-cols-2 gap-4">
                                 ${renderInput('كود الصنف/الباركود (مطلوب)', 'itemCode', code, 'text', 'barcode', isEditing ? 'col-span-1' : 'col-span-2')}
                                 ${renderInput('اسم المنتج الأساسي (مطلوب)', 'itemName', name, 'text', 'tag')}
                             </div>
-
                             <div class="grid grid-cols-2 gap-4">
                                 ${renderInput('الكمية الحالية', 'itemQuantity', quantity, 'tel', 'package', 'col-span-1')}
                                 ${renderInput('الحد الأدنى للكمية', 'itemMinQuantity', minQuantity, 'tel', 'minus', 'col-span-1')}
                             </div>
-
                             <div class="grid grid-cols-3 gap-4">
                                 ${renderInput('سعر التكلفة', 'itemCostPrice', costPrice, 'tel', 'dollar-sign', 'col-span-1')}
                                 ${renderInput('سعر الجمهور/البيع', 'itemPublicPrice', publicPrice, 'tel', 'dollar-sign', 'col-span-1')}
                                 ${renderInput('تاريخ الانتهاء', 'itemExpiryDate', expiryDate, 'text', 'calendar', 'col-span-1')}
                             </div>
-
                             <div>
-                                <label for="itemCategory" class="block text-sm font-medium text-gray-700 mb-1">الفئة</label>
-                                <select id="itemCategory" name="itemCategory" required
-                                    class="block w-full rounded-md border-gray-300 py-2.5 pl-4 pr-8 text-sm focus:border-teal-500 focus:ring-teal-500">
-                                    ${inventoryCategories.map(cat =>
-                `<option value="${cat}" ${category === cat ? 'selected' : ''}>${cat}</option>`
-            ).join('')}
+                                <label for="itemCategory" class="block text-sm font-medium text-gray-700 mb-1">فئة الصنف</label>
+                                <select id="itemCategory" name="itemCategory" required class="block w-full rounded-md border-gray-300 py-2.5 pl-4 pr-8 text-sm focus:border-teal-500 focus:ring-teal-500">
+                                    ${inventoryCategories.map(cat => `<option value="${cat}" ${cat === category ? 'selected' : ''}>${cat}</option>`).join('')}
                                 </select>
                             </div>
-
-                            <div class="pt-4 flex justify-start">
+                            <div class="pt-4 flex justify-end">
                                 <button
                                     type="submit"
                                     id="item-submit-button"
-                                    class="px-6 py-3 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition duration-150 shadow-md flex items-center"
+                                    class="px-6 py-2 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition duration-150 shadow-md flex items-center"
                                 >
-                                    <i data-lucide="${isEditing ? 'square-pen' : 'plus-circle'}" class="w-5 h-5 ml-2"></i>
+                                    <i data-lucide="${isEditing ? 'save' : 'plus'}" class="w-5 h-5 ml-2"></i>
                                     ${isEditing ? 'حفظ التعديلات' : 'إضافة الصنف'}
                                 </button>
                             </div>
@@ -1155,52 +1437,40 @@
                 </div>
             `;
             openModal(modalHtml);
-            document.getElementById('item-form').onsubmit = handleItemSubmit;
         };
 
-        const handleItemSubmit = async (e) => {
+
+        window.handleSaveItem = async (e) => {
             e.preventDefault();
-            const form = e.target;
+            const form = document.getElementById('item-form');
             const mode = form.dataset.mode;
             const itemId = form.dataset.itemId;
             const submitButton = document.getElementById('item-submit-button');
 
-            // تنظيف وقراءة القيم الرقمية باستخدام الدالة المحدثة
-            const quantity = cleanNumberValue(form.itemQuantity.value);
-            const minQuantity = cleanNumberValue(form.itemMinQuantity.value);
-            const publicPrice = cleanNumberValue(form.itemPublicPrice.value);
-            const costPrice = cleanNumberValue(form.itemCostPrice.value);
-
-            // التحقق من الحقول الأساسية
-            if (!form.itemCode.value.trim() || !form.itemName.value.trim()) {
-                alert('الرجاء إدخال كود الصنف واسم المنتج.');
-                return;
-            }
-
-            if (!userId) {
-                alert('النظام غير مصادق بعد. حاول مرة أخرى.');
-                return;
-            }
-
-            const collectionRef = getInventoryCollectionRef();
-
             const itemData = {
-                code: form.itemCode.value.trim(),
-                name: form.itemName.value.trim(),
+                name: String(form.itemName.value || '').trim(),
+                code: String(form.itemCode.value || '').trim(),
+                quantity: cleanNumberValue(form.itemQuantity.value),
+                minQuantity: cleanNumberValue(form.itemMinQuantity.value),
+                costPrice: cleanNumberValue(form.itemCostPrice.value),
+                publicPrice: cleanNumberValue(form.itemPublicPrice.value),
                 category: form.itemCategory.value,
-                quantity: quantity, // سيتم تخزين القيمة الكسرية بشكل سليم هنا (مثل 1.5)
-                minQuantity: minQuantity,
-                publicPrice: publicPrice,
-                costPrice: costPrice,
-                expiryDate: form.itemExpiryDate.value || null,
+                expiryDate: formatDateValue(form.itemExpiryDate.value), // استخدام دالة التنظيف
                 updatedAt: new Date().toISOString()
             };
+
+            if (!itemData.name || !itemData.code) {
+                alert('الرجاء إدخال اسم وكود الصنف.');
+                return;
+            }
 
             submitButton.disabled = true;
             submitButton.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 ml-2 animate-spin"></i> جاري الحفظ...`;
             if (typeof lucide !== 'undefined') { lucide.createIcons(); }
 
             try {
+                const collectionRef = getInventoryCollectionRef();
+
                 if (mode === 'add') {
                     // تحقق من عدم تكرار الكود
                     const existingItem = inventory.find(i => i.code === itemData.code);
@@ -1208,8 +1478,13 @@
                         alert(`صنف بهذا الكود (${itemData.code}) موجود بالفعل: ${existingItem.name}. الرجاء التعديل عليه بدلاً من الإضافة.`);
                         return;
                     }
+
                     const newDocRef = doc(collectionRef);
-                    await setDoc(newDocRef, { ...itemData, id: newDocRef.id, createdAt: new Date().toISOString() });
+                    await setDoc(newDocRef, {
+                        ...itemData,
+                        id: newDocRef.id,
+                        createdAt: new Date().toISOString()
+                    });
                     alert('تم إضافة الصنف بنجاح.');
                 } else if (mode === 'edit') {
                     const docRef = doc(collectionRef, itemId);
@@ -1227,6 +1502,7 @@
                 if (typeof lucide !== 'undefined') { lucide.createIcons(); }
             }
         };
+
 
         // ----------------------------------------------------
         // ** منطق حذف صنف **
@@ -1249,17 +1525,13 @@
                             </button>
                         </div>
                         <div class="p-6">
-                            <p class="text-gray-700">هل أنت متأكد من حذف الصنف <span class="font-bold text-red-600">${currentItem.name}</span> بشكل نهائي؟</p>
-                            <p class="text-sm text-gray-500 mt-2">لا يمكن التراجع عن هذا الإجراء.</p>
+                            <p class="text-gray-700">هل أنت متأكد من حذف الصنف: <span class="font-bold text-teal-700">${currentItem.name} (${currentItem.code})</span>؟</p>
+                            <p class="text-sm text-red-500 mt-2">لا يمكن التراجع عن هذا الإجراء.</p>
                             <div class="mt-6 flex justify-end space-x-3 space-x-reverse">
-                                <button onclick="window.closeModal('delete-modal')"
-                                        class="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition duration-150">
-                                    إلغاء
-                                </button>
-                                <button onclick="handleItemDelete('${itemId}')" id="delete-submit-button"
-                                        class="px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition duration-150 shadow-md flex items-center">
-                                    <i data-lucide="trash-2" class="w-4 h-4 ml-2"></i>
-                                    نعم، احذف الصنف
+                                <button type="button" onclick="window.closeModal('delete-modal')" class="px-4 py-2 text-gray-700 bg-gray-200 font-semibold rounded-lg hover:bg-gray-300 transition duration-150">إلغاء</button>
+                                <button type="button" onclick="window.handleDeleteItem('${itemId}')" id="delete-item-button" class="px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition duration-150 shadow-md flex items-center">
+                                    <i data-lucide="trash-2" class="w-5 h-5 ml-2"></i>
+                                    حذف
                                 </button>
                             </div>
                         </div>
@@ -1269,32 +1541,74 @@
             openModal(modalHtml);
         };
 
-        // 💥 دالة الحذف الفعلية (جعلتها عالمية)
-        window.handleItemDelete = async (itemId) => {
-            const submitButton = document.getElementById('delete-submit-button');
-
-            if (!userId) {
-                alert('النظام غير مصادق بعد. حاول مرة أخرى.');
-                return;
-            }
-
+        window.handleDeleteItem = async (itemId) => {
+            const submitButton = document.getElementById('delete-item-button');
             submitButton.disabled = true;
             submitButton.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 ml-2 animate-spin"></i> جاري الحذف...`;
             if (typeof lucide !== 'undefined') { lucide.createIcons(); }
 
             try {
-                const docRef = doc(getInventoryCollectionRef(), itemId);
-                await deleteDoc(docRef);
+                const collectionRef = getInventoryCollectionRef();
+                await deleteDoc(doc(collectionRef, itemId));
                 window.closeModal('delete-modal');
                 alert('تم حذف الصنف بنجاح.');
             } catch (error) {
                 console.error("Error deleting item:", error);
-                alert(`فشل في حذف البيانات: ${error.message}`);
+                alert(`فشل في حذف الصنف: ${error.message}`);
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = 'حذف';
+                if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+            }
+        };
+
+        // 💥 دالة تنفيذ حذف جميع البيانات (Batch Delete) - تم إبقاؤها كما هي
+        window.handleDeleteAll = async (e) => {
+            e.preventDefault();
+            const confirmationInput = document.getElementById('delete-all-confirmation').value;
+            const submitButton = document.getElementById('delete-all-submit-button');
+
+            if (confirmationInput !== 'احذف كل شيء') {
+                alert('كلمة التأكيد غير صحيحة.');
+                return;
+            }
+
+            const collectionRef = getInventoryCollectionRef();
+            submitButton.disabled = true;
+            submitButton.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 ml-2 animate-spin"></i> جاري الحذف...`;
+            if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+
+            try {
+                // 1. جلب كل الوثائق
+                const snapshot = await getDocs(collectionRef);
+                const batch = writeBatch(db);
+                let deletedCount = 0;
+
+                // 2. إضافة كل وثيقة للحذف في الدفعة
+                snapshot.docs.forEach(doc => {
+                    batch.delete(doc.ref);
+                    deletedCount++;
+                });
+
+                // 3. تنفيذ الدفعة
+                await batch.commit();
+
+                alert(`تم حذف ${deletedCount} صنف بنجاح.`);
+                window.closeModal('delete-all-modal');
+
+            } catch (error) {
+                console.error("Error deleting all items:", error);
+                // التذكير بالفشل في حال عدم وجود صلاحية مسؤول
+                alert(`فشل في حذف جميع البيانات: ${error.message}. (تحقق من صلاحيات المسؤول في Firebase Rules).`);
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = 'نعم، احذف جميع البيانات';
+                if (typeof lucide !== 'undefined') { lucide.createIcons(); }
             }
         };
 
         // ----------------------------------------------------
-        // ** منطق حذف كل البيانات **
+        // ** منطق حذف جميع البيانات **
         // ----------------------------------------------------
         window.openDeleteAllConfirmModal = () => {
             const modalHtml = `
@@ -1309,18 +1623,18 @@
                                 <i data-lucide="x" class="w-6 h-6"></i>
                             </button>
                         </div>
-                        <form id="delete-all-form" class="p-6">
+                        <form id="delete-all-form" onsubmit="window.handleDeleteAll(event)" class="p-6">
                             <p class="text-gray-700">هذا الإجراء سيقوم بحذف <span class="font-bold text-red-600">${formatNumber(inventory.length)}</span> أصناف موجودة في مخزونك. <span class="font-extrabold text-red-700">لا يمكن التراجع!</span></p>
                             <p class="text-sm text-gray-500 mt-2">للتأكيد، الرجاء كتابة كلمة <span class="font-mono text-red-600 bg-red-100 p-1 rounded">احذف كل شيء</span> في الحقل أدناه:</p>
                             <input type="text" id="delete-all-confirmation" required class="mt-4 block w-full rounded-md border-red-300 py-2.5 text-center text-red-600 font-bold focus:border-red-500 focus:ring-red-500" placeholder="اكتب هنا: احذف كل شيء">
                             <div class="mt-6 flex justify-end space-x-3 space-x-reverse">
-                                <button type="button" onclick="window.closeModal('delete-all-modal')"
-                                        class="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition duration-150">
-                                    إلغاء
-                                </button>
-                                <button type="submit" id="delete-all-submit-button"
-                                        class="px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition duration-150 shadow-md flex items-center">
-                                    نعم، أحذف كل شيء
+                                <button type="button" onclick="window.closeModal('delete-all-modal')" class="px-6 py-2 text-gray-700 bg-gray-200 font-semibold rounded-lg hover:bg-gray-300 transition duration-150">إلغاء</button>
+                                <button
+                                    type="submit"
+                                    id="delete-all-submit-button"
+                                    class="px-6 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition duration-150 shadow-md flex items-center"
+                                >
+                                    نعم، احذف جميع البيانات
                                 </button>
                             </div>
                         </form>
@@ -1328,65 +1642,101 @@
                 </div>
             `;
             openModal(modalHtml);
-            document.getElementById('delete-all-form').onsubmit = handleDeleteAllSubmit;
+        };
+        
+        // ----------------------------------------------------
+        // 🌟 منطق حذف جميع بيانات تقارير الجرد (الجديد) 🌟
+        // ----------------------------------------------------
+        window.openDeleteAuditConfirmModal = () => {
+            const modalHtml = `
+                <div id="delete-audit-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50" dir="rtl">
+                    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100">
+                        <div class="p-6 border-b flex justify-between items-center bg-red-50">
+                            <h2 class="text-xl font-bold text-red-700 flex items-center">
+                                <i data-lucide="file-x" class="w-5 h-5 ml-2"></i>
+                                تحذير: حذف جميع تقارير الجرد
+                            </h2>
+                            <button onclick="window.closeModal('delete-audit-modal')" class="text-gray-400 hover:text-gray-600" aria-label="إغلاق">
+                                <i data-lucide="x" class="w-6 h-6"></i>
+                            </button>
+                        </div>
+                        <form id="delete-audit-form" onsubmit="window.handleDeleteAuditData(event)" class="p-6">
+                            <p class="text-gray-700">هذا الإجراء سيقوم بحذف <span class="font-bold text-red-600">جميع تقارير الجرد</span> المسجلة في النظام. <span class="font-extrabold text-red-700">لا يمكن التراجع!</span></p>
+                            <p class="text-sm text-gray-500 mt-2">للتأكيد، الرجاء كتابة كلمة <span class="font-mono text-red-600 bg-red-100 p-1 rounded">احذف تقارير الجرد</span> في الحقل أدناه:</p>
+                            <input type="text" id="delete-audit-confirmation" required class="mt-4 block w-full rounded-md border-red-300 py-2.5 text-center text-red-600 font-bold focus:border-red-500 focus:ring-red-500" placeholder="اكتب هنا: احذف تقارير الجرد">
+                            <div class="mt-6 flex justify-end space-x-3 space-x-reverse">
+                                <button type="button" onclick="window.closeModal('delete-audit-modal')" class="px-6 py-2 text-gray-700 bg-gray-200 font-semibold rounded-lg hover:bg-gray-300 transition duration-150">إلغاء</button>
+                                <button
+                                    type="submit"
+                                    id="delete-audit-submit-button"
+                                    class="px-6 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition duration-150 shadow-md flex items-center"
+                                >
+                                    نعم، احذف تقارير الجرد
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+            openModal(modalHtml);
         };
 
-        const handleDeleteAllSubmit = async (e) => {
+        window.handleDeleteAuditData = async (e) => {
             e.preventDefault();
-            const confirmationText = document.getElementById('delete-all-confirmation').value.trim();
-            const submitButton = document.getElementById('delete-all-submit-button');
+            const confirmationInput = document.getElementById('delete-audit-confirmation').value;
+            const submitButton = document.getElementById('delete-audit-submit-button');
 
-            if (confirmationText !== 'احذف كل شيء') {
-                alert('الرجاء كتابة عبارة التأكيد بشكل صحيح.');
+            if (confirmationInput !== 'احذف تقارير الجرد') {
+                alert('كلمة التأكيد غير صحيحة.');
                 return;
             }
 
-            if (!userId) {
-                alert('النظام غير مصادق بعد. حاول مرة أخرى.');
-                return;
-            }
-
+            const collectionRef = getAuditReportsCollectionRef();
             submitButton.disabled = true;
             submitButton.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 ml-2 animate-spin"></i> جاري الحذف...`;
             if (typeof lucide !== 'undefined') { lucide.createIcons(); }
 
             try {
-                const batch = writeBatch(db);
-                const collectionRef = getInventoryCollectionRef();
+                // 1. جلب كل الوثائق
                 const snapshot = await getDocs(collectionRef);
-                let count = 0;
+                const batch = writeBatch(db);
+                let deletedCount = 0;
 
-                snapshot.docs.forEach((doc) => {
+                // 2. إضافة كل وثيقة للحذف في الدفعة
+                snapshot.docs.forEach(doc => {
                     batch.delete(doc.ref);
-                    count++;
+                    deletedCount++;
                 });
 
+                // 3. تنفيذ الدفعة
                 await batch.commit();
-                window.closeModal('delete-all-modal');
-                alert(`تم حذف جميع بيانات المخزون بنجاح. عدد الأصناف المحذوفة: ${formatNumber(count)}`);
-            } catch (e) {
-                console.error("Error deleting all items:", e);
-                alert(`فشل في حذف جميع البيانات: ${e.message}`);
+
+                alert(`تم حذف ${deletedCount} تقرير جرد بنجاح.`);
+                window.closeModal('delete-audit-modal');
+
+            } catch (error) {
+                console.error("Error deleting audit reports:", error);
+                alert(`فشل في حذف تقارير الجرد: ${error.message}. (تحقق من صلاحيات المسؤول في Firebase Rules).`);
             } finally {
                 submitButton.disabled = false;
-                submitButton.textContent = 'نعم، أحذف كل شيء';
+                submitButton.textContent = 'نعم، احذف تقارير الجرد';
                 if (typeof lucide !== 'undefined') { lucide.createIcons(); }
             }
         };
 
-        // ----------------------------------------------------------------------------------
-        // ** منطق الجرد والمطابقة **
-        // ----------------------------------------------------------------------------------
 
-        // 💥 التعديل هنا: جعل الدالة عالمية (Global)
+        // ----------------------------------------------------
+        // ** منطق جرد ومطابقة الكميات **
+        // ----------------------------------------------------
         window.openAuditModal = (itemId) => {
             currentItem = inventory.find(i => i.id === itemId);
             if (!currentItem) return;
 
-            const startingBookQuantity = currentItem.quantity;
             const today = new Date().toISOString().substring(0, 10);
+            const startingBookQuantity = currentItem.quantity;
+            const todayDate = new Date().toISOString().substring(0, 10);
 
-            const modalHtml = `
+            let modalHtml = `
                 <div id="audit-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50" dir="rtl">
                     <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all scale-100">
                         <div class="p-6 border-b flex justify-between items-center bg-teal-50">
@@ -1398,31 +1748,24 @@
                                 <i data-lucide="x" class="w-6 h-6"></i>
                             </button>
                         </div>
-                        <form id="audit-form" class="p-6 space-y-4" data-item-id="${itemId}">
+                        <form id="audit-form" onsubmit="window.handleAuditSubmit(event)" class="p-6 space-y-4" data-item-id="${itemId}">
                             <p class="text-gray-700 p-3 bg-gray-50 rounded-lg border border-gray-200">
                                 الرصيد الدفتري المسجل قبل الحركات: <span class="font-bold text-lg text-teal-700">${formatNumber(startingBookQuantity)} وحدة</span>
                             </p>
-
                             <div class="grid grid-cols-2 gap-4">
                                 ${renderInput('كمية مشتريات (واردة) لم تسجل بعد', 'purchasedQuantity', '', 'tel', 'arrow-big-down-dash', 'col-span-1')}
                                 ${renderInput('كمية مبيعات (صادرة) لم تسجل بعد', 'soldQuantity', '', 'tel', 'arrow-big-up-dash', 'col-span-1')}
                             </div>
-
                             ${renderInput('الرصيد الفعلي بعد الجرد', 'physicalQuantity', startingBookQuantity, 'tel', 'package-check')}
-
                             <div class="grid grid-cols-2 gap-4">
                                 ${renderInput('تاريخ آخر جرد', 'lastAuditDate', currentItem.lastAuditDate || today, 'text', 'calendar')}
                             </div>
-
-                            <div id="audit-variance" class="text-lg font-bold p-3 rounded-lg border border-gray-300 bg-gray-50">
-                                الفرق المتوقع (العجز/الزيادة): <span id="variance-value" class="text-gray-700">0 وحدة</span>
-                            </div>
-
-                            <div class="pt-4 flex justify-start">
+                            <div id="audit-variance-message" class="p-3 rounded-lg border hidden"></div>
+                            <div class="pt-4 flex justify-end">
                                 <button
                                     type="submit"
                                     id="audit-submit-button"
-                                    class="px-6 py-3 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition duration-150 shadow-md flex items-center"
+                                    class="px-6 py-2 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition duration-150 shadow-md flex items-center"
                                 >
                                     <i data-lucide="package-check" class="w-5 h-5 ml-2"></i>
                                     تحديث الكمية بالرصيد الفعلي
@@ -1433,50 +1776,58 @@
                 </div>
             `;
             openModal(modalHtml);
-            document.getElementById('audit-form').onsubmit = handleAuditSubmit;
 
+            // إضافة مستمع لحساب الفرق لحظيًا
             const purchasedInput = document.getElementById('purchasedQuantity');
             const soldInput = document.getElementById('soldQuantity');
             const physicalInput = document.getElementById('physicalQuantity');
-            const varianceElement = document.getElementById('audit-variance');
-            const varianceValueElement = document.getElementById('variance-value');
+            [purchasedInput, soldInput, physicalInput].forEach(input => {
+                if (input) input.addEventListener('input', updateVarianceMessage);
+            });
 
-            // دالة لحساب وتحديث الفروقات
-            const updateAuditCalculations = () => {
-                const purchased = cleanNumberValue(purchasedInput.value);
-                const sold = cleanNumberValue(soldInput.value);
-                const physical = cleanNumberValue(physicalInput.value);
-
-                const expected = startingBookQuantity + purchased - sold;
-                const variance = physical - expected;
-
-                if (Math.abs(variance) < 0.001) { // مقارنة بفارق بسيط جداً لتجنب مشاكل الكسور
-                    varianceElement.className = 'text-lg font-bold p-3 rounded-lg border border-green-500 bg-green-100';
-                    varianceValueElement.textContent = 'متطابق';
-                    varianceValueElement.className = 'text-green-700';
-                } else if (variance > 0) {
-                    varianceElement.className = 'text-lg font-bold p-3 rounded-lg border border-blue-500 bg-blue-100';
-                    varianceValueElement.textContent = `زيادة: +${formatNumber(variance.toFixed(2))} وحدة`;
-                    varianceValueElement.className = 'text-blue-700';
-                } else {
-                    varianceElement.className = 'text-lg font-bold p-3 rounded-lg border border-red-500 bg-red-100';
-                    varianceValueElement.textContent = `عجز: -${formatNumber(Math.abs(variance).toFixed(2))} وحدة`;
-                    varianceValueElement.className = 'text-red-700';
-                }
-            };
-
-            // ربط الأحداث
-            purchasedInput.addEventListener('input', updateAuditCalculations);
-            soldInput.addEventListener('input', updateAuditCalculations);
-            physicalInput.addEventListener('input', updateAuditCalculations);
-
-            // تشغيلها مرة واحدة لتحديث القيم الافتراضية
-            updateAuditCalculations();
+            updateVarianceMessage(); // تحديث أولي
         };
 
-        const handleAuditSubmit = async (e) => {
+        const updateVarianceMessage = () => {
+            const itemId = document.getElementById('audit-form').dataset.itemId;
+            const currentItemData = inventory.find(i => i.id === itemId);
+            if (!currentItemData) return;
+
+            const startingBookQuantity = currentItemData.quantity;
+            const purchased = cleanNumberValue(document.getElementById('purchasedQuantity').value);
+            const sold = cleanNumberValue(document.getElementById('soldQuantity').value);
+            const physical = cleanNumberValue(document.getElementById('physicalQuantity').value);
+
+            const expected = startingBookQuantity + purchased - sold;
+            const variance = physical - expected;
+
+            const varianceDiv = document.getElementById('audit-variance-message');
+
+            let message, colorClass;
+
+            if (variance === 0) {
+                message = `لا يوجد فرق. الرصيد الفعلي (${formatNumber(physical.toFixed(2))}) يطابق الرصيد المتوقع (${formatNumber(expected.toFixed(2))}).`;
+                colorClass = 'bg-green-100 border-green-400 text-green-700';
+            } else if (variance > 0) {
+                message = `زيادة: ${formatNumber(variance.toFixed(2))} وحدة. الرصيد الفعلي (${formatNumber(physical.toFixed(2))}) أعلى من المتوقع (${formatNumber(expected.toFixed(2))}).`;
+                colorClass = 'bg-yellow-100 border-yellow-400 text-yellow-700';
+            } else {
+                message = `عجز: ${formatNumber(Math.abs(variance).toFixed(2))} وحدة. الرصيد الفعلي (${formatNumber(physical.toFixed(2))}) أقل من المتوقع (${formatNumber(expected.toFixed(2))}).`;
+                colorClass = 'bg-red-100 border-red-400 text-red-700';
+            }
+
+            varianceDiv.innerHTML = `<p class="font-bold">${message}</p>`;
+            varianceDiv.className = `p-3 rounded-lg border ${colorClass}`;
+            varianceDiv.classList.remove('hidden');
+        };
+
+        /**
+         * 🌟🌟🌟 دالة حفظ الجرد (تم تعديل حساب varianceFinancialValue) 🌟🌟🌟
+         * تنفذ عمليتي: (1) تحديث الصنف، و (2) إضافة تقرير جرد جديد (Audit Report)
+         */
+        window.handleAuditSubmit = async (e) => {
             e.preventDefault();
-            const form = e.target;
+            const form = document.getElementById('audit-form');
             const itemId = form.dataset.itemId;
             const submitButton = document.getElementById('audit-submit-button');
 
@@ -1491,11 +1842,33 @@
             const startingBookQuantity = currentItemData.quantity;
             const expected = startingBookQuantity + purchased - sold;
             const variance = physical - expected;
+            
+            // 🌟🌟🌟 التعديل المطلوب: حساب القيمة المالية للفرق باستخدام سعر البيع (publicPrice) 🌟🌟🌟
+            const varianceFinancialValue = variance * currentItemData.publicPrice;
 
+            // 1. تحديث الكمية في المخزون
             const updateData = {
                 quantity: physical,
                 lastAuditDate: lastAuditDate,
                 updatedAt: new Date().toISOString()
+            };
+
+            // 2. إعداد بيانات التقرير المالي (Audit Report)
+            const auditReportData = {
+                itemId: itemId,
+                itemCode: currentItemData.code,
+                itemName: currentItemData.name,
+                userId: userId, // المستخدم الذي قام بالجرد
+                timestamp: new Date().toISOString(),
+                startingBookQuantity: startingBookQuantity, // الكمية المسجلة قبل الجرد
+                purchased: purchased, // المشتريات المضافة أثناء الجرد
+                sold: sold, // المبيعات المخصومة أثناء الجرد
+                expectedBookQuantity: expected, // الرصيد المتوقع (قبل المطابقة)
+                physicalQuantity: physical, // الرصيد الفعلي بعد الجرد
+                variance: variance, // الفرق (العجز/الزيادة)
+                costPrice: currentItemData.costPrice,
+                publicPrice: currentItemData.publicPrice,
+                varianceFinancialValue: varianceFinancialValue, // القيمة المالية للفرق بناءً على سعر البيع
             };
 
             submitButton.disabled = true;
@@ -1503,11 +1876,27 @@
             if (typeof lucide !== 'undefined') { lucide.createIcons(); }
 
             try {
-                const collectionRef = getInventoryCollectionRef();
-                await updateDoc(doc(collectionRef, itemId), updateData);
+                // استخدام Batch لكتابة عمليتين (تحديث المخزون وإضافة التقرير)
+                const batch = writeBatch(db);
+                const inventoryRef = getInventoryCollectionRef();
+
+                // 1. تحديث وثيقة المخزون
+                batch.update(doc(inventoryRef, itemId), updateData);
+
+                // 2. تسجيل تقرير الجرد المالي في مجموعة جديدة
+                const auditReportsCollection = getAuditReportsCollectionRef();
+                
+                // إضافة تقرير جديد
+                const newAuditDocRef = doc(auditReportsCollection);
+                batch.set(newAuditDocRef, { ...auditReportData, id: newAuditDocRef.id });
+
+                // تنفيذ العمليات دفعة واحدة
+                await batch.commit();
 
                 window.closeModal('audit-modal');
-                alert(`تم تحديث الكمية الفعلية بنجاح إلى ${formatNumber(physical)} وحدة. الفرق (العجز/الزيادة): ${formatNumber(variance.toFixed(2))} وحدة.`);
+                
+                // رسالة تأكيد تتضمن القيمة المالية الجديدة المحسوبة على سعر البيع
+                alert(`تم تحديث الكمية الفعلية بنجاح إلى ${formatNumber(physical)} وحدة. الفرق (العجز/الزيادة): ${formatNumber(variance.toFixed(2))} وحدة. القيمة المالية للفرق (بسعر البيع): ${formatNumber(varianceFinancialValue.toFixed(2))} ج.م.`);
             } catch (error) {
                 console.error("Error updating audit:", error);
                 alert(`فشل في تحديث بيانات الجرد: ${error.message}`);
@@ -1518,10 +1907,10 @@
             }
         };
 
+
         // ----------------------------------------------------
         // ** منطق العرض الرئيسي (Rendering Logic) **
         // ----------------------------------------------------
-
         const calculateTotals = (items) => {
             let totalQuantity = 0;
             let totalCostValue = 0;
@@ -1538,46 +1927,39 @@
             document.getElementById('total-quantity').textContent = formatNumber(totalQuantity.toFixed(2));
             document.getElementById('total-cost-value').textContent = formatNumber(totalCostValue.toFixed(2)) + ' ج.م';
             document.getElementById('total-public-value').textContent = formatNumber(totalPublicValue.toFixed(2)) + ' ج.م';
-            document.getElementById('total-potential-profit').textContent = formatNumber(totalPotentialProfit.toFixed(2)) + ' ج.م';
+            document.getElementById('total-profit-value').textContent = formatNumber(totalPotentialProfit.toFixed(2)) + ' ج.م';
         };
 
         const renderCategoryFilter = () => {
-            const container = document.getElementById('category-filters');
-            const categories = ['الكل', 'كمية منخفضة', 'منتهي الصلاحية', 'قرب الانتهاء', ...inventoryCategories];
+            const filterSelect = document.getElementById('category-filter');
+            // احتفظ بالفلتر المخصص
+            const customFilters = ['الكل', 'كمية منخفضة', 'منتهي الصلاحية', 'قرب الانتهاء'];
 
-            const categoriesHtml = categories.map(cat => {
-                const isSelected = currentFilter.category === cat;
-                return `
-                    <button data-category="${cat}"
-                        class="px-4 py-2 text-sm font-medium rounded-full transition duration-150 ${isSelected ? 'bg-teal-600 text-white shadow-md' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}"
-                    >
-                        ${cat}
-                    </button>
-                `;
-            }).join('');
+            let optionsHtml = customFilters.map(filter =>
+                `<option value="${filter}" ${currentFilter.category === filter ? 'selected' : ''}>${filter}</option>`
+            ).join('');
 
-            container.innerHTML = categoriesHtml;
+            optionsHtml += inventoryCategories.map(cat =>
+                `<option value="${cat}" ${currentFilter.category === cat ? 'selected' : ''}>${cat}</option>`
+            ).join('');
 
-            // إعادة ربط حدث النقر
-            container.querySelectorAll('button').forEach(button => {
-                button.addEventListener('click', (e) => {
-                    let category = e.currentTarget.dataset.category;
-                    currentFilter.query = ''; // مسح البحث عند التصفية بالفئة
-                    document.getElementById('search-input').value = '';
+            // تأكد من أننا لا ننشئ العناصر إلا مرة واحدة
+            if (filterSelect.innerHTML === '' || optionsHtml.length > filterSelect.innerHTML.length) {
+                filterSelect.innerHTML = optionsHtml;
+            }
 
-                    // إعادة تعيين الفلتر لتجنب تكرار الكود
-                    currentFilter.category = category;
-
-                    // يتم التعامل مع الحالات الخاصة (الكمية المنخفضة والمنتهية) داخل renderApp/filterInventory
-                    renderApp();
-                });
-            });
+            filterSelect.onchange = (e) => {
+                currentFilter.category = e.target.value;
+                renderApp();
+            };
         };
 
         const renderInventoryRow = (item) => {
+            const threeMonthsFromNow = new Date();
+            threeMonthsFromNow.setMonth(threeMonthsFromNow.getMonth() + 3);
+
             const isLow = item.quantity <= item.minQuantity;
-            const isExpired = item.expiryDate && new Date(item.expiryDate) < new Date();
-            const threeMonthsFromNow = new Date(new Date().setMonth(new Date().getMonth() + 3));
+            const isExpired = item.expiryDate && new Date(item.expiryDate) < new Date(new Date().setHours(0, 0, 0, 0)); // تاريخ الانتهاء أقل من اليوم
             const isNearExpiry = item.expiryDate && new Date(item.expiryDate) < threeMonthsFromNow && !isExpired;
 
             // 💥 حساب الربح والقيمة
@@ -1612,39 +1994,40 @@
             if (currentFilter.category === 'منتهي الصلاحية' && !isExpired) return '';
             if (currentFilter.category === 'قرب الانتهاء' && !isNearExpiry) return '';
 
-
             return `
                 <tr class="${isExpired ? 'bg-red-50 hover:bg-red-100' : (isLow ? 'bg-yellow-50 hover:bg-yellow-100' : 'hover:bg-gray-50')} transition duration-150">
                     <td data-label="الكود" class="px-3 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${item.code || 'N/A'}</td>
                     <td data-label="اسم الصنف" class="px-3 py-4 whitespace-nowrap text-sm text-gray-900">${item.name}</td>
-                    <td data-label="الكمية" class="px-3 py-4 whitespace-nowrap text-sm font-bold ${isLow ? 'text-red-600' : 'text-teal-700'}">${formatNumber(item.quantity.toFixed(2))}</td>
-                    <td data-label="سعر التكلفة" class="px-3 py-4 whitespace-nowrap text-sm text-gray-700">${formatNumber(item.costPrice.toFixed(2))} ج.م</td>
-                    <td data-label="سعر الجمهور" class="px-3 py-4 whitespace-nowrap text-sm text-gray-700">${formatNumber(item.publicPrice.toFixed(2))} ج.م</td>
-                    <td data-label="إجمالي التكلفة" class="px-3 py-4 whitespace-nowrap text-sm text-gray-500">${formatNumber(totalCost.toFixed(2))} ج.م</td>
-                    <td data-label="إجمالي البيع" class="px-3 py-4 whitespace-nowrap text-sm text-gray-500">${formatNumber(totalPublic.toFixed(2))} ج.م</td>
-                    <td data-label="الربح/الوحدة" class="px-3 py-4 whitespace-nowrap text-sm text-green-700">${formatNumber(profitPerUnit.toFixed(2))} ج.م</td>
-                    <td data-label="الإجمالي المحتمل" class="px-3 py-4 whitespace-nowrap text-sm text-teal-600 font-bold">${formatNumber(totalPotentialProfit.toFixed(2))} ج.م</td>
+                    <td data-label="الكمية" class="px-3 py-4 whitespace-nowrap text-sm ${isLow ? 'text-red-600 font-bold' : 'text-gray-900'}">
+                        ${formatNumber(item.quantity.toFixed(2))}
+                        ${isLow ? `<i data-lucide="alert-triangle" class="w-4 h-4 inline-block align-middle ml-1 text-red-600"></i>` : ''}
+                    </td>
+                    <td data-label="حد أدنى" class="px-3 py-4 whitespace-nowrap text-sm text-gray-500">${formatNumber(item.minQuantity.toFixed(2))}</td>
+                    <td data-label="سعر الجمهور" class="px-3 py-4 whitespace-nowrap text-sm text-gray-900">${formatNumber(item.publicPrice.toFixed(2))}</td>
+                    <td data-label="سعر التكلفة" class="px-3 py-4 whitespace-nowrap text-sm text-gray-900">${formatNumber(item.costPrice.toFixed(2))}</td>
+                    <td data-label="الفئة" class="px-3 py-4 whitespace-nowrap text-sm text-gray-500">${item.category}</td>
+                    <td data-label="الإجمالي (تكلفة)" class="px-3 py-4 whitespace-nowrap text-sm text-orange-700 font-medium">${formatNumber(totalCost.toFixed(2))}</td>
+                    <td data-label="الإجمالي (جمهور)" class="px-3 py-4 whitespace-nowrap text-sm text-teal-700 font-medium">${formatNumber(totalPublic.toFixed(2))}</td>
+                    <td data-label="الربح المحتمل/الوحدة" class="px-3 py-4 whitespace-nowrap text-sm ${profitPerUnit < 0 ? 'text-red-600' : 'text-green-700'} font-medium">${formatNumber(profitPerUnit.toFixed(2))}</td>
+                    <td data-label="الإجمالي المحتمل" class="px-3 py-4 whitespace-nowrap text-sm ${totalPotentialProfit < 0 ? 'text-red-600' : 'text-green-700'} font-bold">${formatNumber(totalPotentialProfit.toFixed(2))}</td>
                     <td data-label="تاريخ الانتهاء" class="px-3 py-4 whitespace-nowrap text-sm ${expiryColor}">
                         ${item.expiryDate || 'N/A'}
                     </td>
                     <td data-label="الحالة" class="px-3 py-4 whitespace-nowrap">
-                        <span class="inline-flex items-center px-3 py-0.5 rounded-full text-xs font-medium ${statusColor}">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColor}">
                             <i data-lucide="${statusIcon}" class="w-3 h-3 ml-1"></i>
                             ${statusText}
                         </span>
                     </td>
-                    <td data-label="الإجراءات" class="px-3 py-4 whitespace-nowrap text-left text-sm font-medium">
-                        <div class="flex space-x-2 space-x-reverse justify-end">
-                            <button onclick="window.openAddEditModal('${item.id}')" title="تعديل"
-                                class="text-teal-600 hover:text-teal-900 p-1 rounded-full hover:bg-teal-100 transition">
-                                <i data-lucide="square-pen" class="w-5 h-5"></i>
-                            </button>
-                            <button onclick="window.openAuditModal('${item.id}')" title="جرد ومطابقة"
-                                class="text-green-600 hover:text-green-900 p-1 rounded-full hover:bg-green-100 transition">
+                    <td data-label="الإجراءات" class="px-3 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <div class="flex items-center space-x-2 space-x-reverse">
+                            <button onclick="window.openAuditModal('${item.id}')" title="جرد الكمية" class="text-teal-600 hover:text-teal-900 p-1 rounded-full hover:bg-gray-100 transition">
                                 <i data-lucide="scale" class="w-5 h-5"></i>
                             </button>
-                            <button onclick="window.openDeleteConfirmModal('${item.id}')" title="حذف"
-                                class="text-red-600 hover:text-red-900 p-1 rounded-full hover:bg-red-100 transition">
+                            <button onclick="window.openAddEditModal('${item.id}')" title="تعديل الصنف" class="text-teal-600 hover:text-teal-900 p-1 rounded-full hover:bg-gray-100 transition">
+                                <i data-lucide="square-pen" class="w-5 h-5"></i>
+                            </button>
+                            <button onclick="window.openDeleteConfirmModal('${item.id}')" title="حذف الصنف" class="text-red-600 hover:text-red-900 p-1 rounded-full hover:bg-gray-100 transition">
                                 <i data-lucide="trash-2" class="w-5 h-5"></i>
                             </button>
                         </div>
@@ -1654,12 +2037,10 @@
         };
 
         const renderApp = () => {
-            // التحقق من وجود مستخدم قبل عرض التطبيق
-            if (!userId) {
+            if (!inventory) {
                 // قد يتم استدعاء هذه الدالة قبل onAuthStateChanged، لذلك نخرج
                 return;
             }
-
             const filteredItems = filterInventory(inventory);
             const tbody = document.getElementById('inventory-tbody');
             const itemsToRender = filteredItems.map(item => renderInventoryRow(item)).join('');
@@ -1674,6 +2055,7 @@
 
             calculateTotals(filteredItems);
             renderCategoryFilter();
+
             // إعادة إنشاء أيقونات lucide بعد تحديث المحتوى
             if (typeof lucide !== 'undefined') { lucide.createIcons(); }
         };
@@ -1681,6 +2063,7 @@
         // --- Event Listeners ---
         document.addEventListener('DOMContentLoaded', () => {
             authenticateAndStart();
+
             // ربط أحداث الفلاتر والبحث
             document.getElementById('search-input').addEventListener('input', (e) => {
                 currentFilter.query = e.target.value;
@@ -1701,7 +2084,9 @@
             document.getElementById('import-file-button').addEventListener('click', openImportModal);
             document.getElementById('logout-button').addEventListener('click', window.handleLogout);
             document.getElementById('delete-all-button').addEventListener('click', window.openDeleteAllConfirmModal);
-
+            
+            // 🌟 ربط زر تقارير الجرد الجديد 🌟
+            document.getElementById('audit-report-button').addEventListener('click', window.openAuditReportMenu);
         });
 
         // 💥 بدء التشغيل
@@ -1710,243 +2095,7 @@
         if (document.readyState === 'complete' || document.readyState === 'interactive') {
             authenticateAndStart();
         }
-
     </script>
-
-    <div id="loading-state" class="fixed inset-0 bg-white z-50 flex items-center justify-center flex-col">
-        <i data-lucide="loader-2" class="w-12 h-12 text-teal-500 animate-spin"></i>
-        <p class="mt-4 text-gray-700 font-semibold">جاري تحميل البيانات...</p>
-    </div>
-
-    <div id="login-page" class="hidden min-h-screen flex items-center justify-center bg-gray-100" dir="rtl">
-        <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md">
-            <div class="text-center mb-6">
-                <i data-lucide="syringe" class="w-10 h-10 text-teal-600 mx-auto mb-2"></i>
-                <h2 class="text-3xl font-extrabold text-gray-900">نظام إدارة المخزون الصيدلي</h2>
-                <p class="text-gray-500 mt-2">يرجى تسجيل الدخول للوصول إلى بيانات المخزون</p>
-            </div>
-
-            <!-- <div class="flex border-b mb-6">
-                <button id="login-title" onclick="window.toggleForm('login')" class="flex-1 py-3 text-center transition duration-150">تسجيل الدخول</button>
-                <button id="register-title" onclick="window.toggleForm('register')" class="flex-1 py-3 text-center transition duration-150">إنشاء حساب جديد</button>
-            </div> -->
-
-
-            <div id="login-form-container" class="hidden">
-                <form id="login-form" onsubmit="window.handleLogin(event)" class="space-y-4">
-                    <div>
-                        <label for="email" class="block text-sm font-medium text-gray-700 mb-1">البريد
-                            الإلكتروني</label>
-                        <div class="relative rounded-md shadow-sm">
-                            <div
-                                class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
-                                <i data-lucide="mail" class="w-5 h-5"></i>
-                            </div>
-                            <input type="email" name="email" id="email" required placeholder="example@domain.com"
-                                class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2 text-right focus:border-teal-500 focus:ring-teal-500 text-sm"
-                                dir="ltr">
-                        </div>
-                    </div>
-                    <div>
-                        <label for="password" class="block text-sm font-medium text-gray-700 mb-1">كلمة المرور</label>
-                        <div class="relative rounded-md shadow-sm">
-                            <div
-                                class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
-                                <i data-lucide="lock" class="w-5 h-5"></i>
-                            </div>
-                            <input type="password" name="password" id="password" required placeholder="********"
-                                class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2 text-right focus:border-teal-500 focus:ring-teal-500 text-sm"
-                                dir="ltr">
-                        </div>
-                    </div>
-                    <div id="login-error-message"></div>
-                    <button type="submit" id="login-submit-button"
-                        class="w-full px-4 py-2 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition duration-150 shadow-md flex items-center justify-center mt-6">
-                        <i data-lucide="log-in" class="w-5 h-5 ml-2"></i> تسجيل الدخول
-                    </button>
-                </form>
-            </div>
-
-
-            <div id="register-form-container" class="hidden">
-                <form id="register-form" onsubmit="window.handleRegister(event)" class="space-y-4">
-                    <div>
-                        <label for="regEmail" class="block text-sm font-medium text-gray-700 mb-1">البريد
-                            الإلكتروني</label>
-                        <div class="relative rounded-md shadow-sm">
-                            <div
-                                class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
-                                <i data-lucide="mail" class="w-5 h-5"></i>
-                            </div>
-                            <input type="email" name="regEmail" id="regEmail" required placeholder="example@domain.com"
-                                class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2 text-right focus:border-teal-500 focus:ring-teal-500 text-sm"
-                                dir="ltr">
-                        </div>
-                    </div>
-                    <div>
-                        <label for="regPassword" class="block text-sm font-medium text-gray-700 mb-1">كلمة المرور (6
-                            أحرف على الأقل)</label>
-                        <div class="relative rounded-md shadow-sm">
-                            <div
-                                class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
-                                <i data-lucide="lock" class="w-5 h-5"></i>
-                            </div>
-                            <input type="password" name="regPassword" id="regPassword" required minlength="6"
-                                placeholder="********"
-                                class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2 text-right focus:border-teal-500 focus:ring-teal-500 text-sm"
-                                dir="ltr">
-                        </div>
-                    </div>
-                    <div id="register-error-message"></div>
-                    <button type="submit" id="register-submit-button"
-                        class="w-full px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition duration-150 shadow-md flex items-center justify-center mt-6">
-                        <i data-lucide="user-plus" class="w-5 h-5 ml-2"></i> إنشاء حساب جديد
-                    </button>
-                </form>
-                <p class="text-center text-sm text-gray-500 pt-4">سيتم تسجيل الدخول تلقائياً بعد إنشاء الحساب.</p>
-            </div>
-        </div>
-    </div>
-
-
-    <div id="main-app" class="hidden">
-        <header class="bg-white shadow-md">
-            <div class="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="flex justify-between items-center py-4">
-                    <h1 class="text-3xl font-extrabold text-gray-900 flex items-center">
-                        <i data-lucide="syringe" class="w-8 h-8 text-teal-600 ml-2"></i>
-                        نظام إدارة المخزون الصيدلي
-                    </h1>
-
-                    <div class="flex items-center space-x-4 space-x-reverse">
-                        <button id="import-file-button" title="استيراد من ملف"
-                            class="p-2 rounded-full bg-teal-50 text-teal-600 hover:bg-teal-100 transition duration-150">
-                            <i data-lucide="file-up" class="w-6 h-6"></i>
-                        </button>
-                        <button id="add-item-button" title="إضافة صنف جديد"
-                            class="px-4 py-2 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition duration-150 shadow-md flex items-center">
-                            <i data-lucide="plus-circle" class="w-5 h-5 ml-2"></i> إضافة صنف
-                        </button>
-                        <button id="logout-button" title="تسجيل الخروج"
-                            class="p-2 rounded-full text-gray-600 hover:bg-gray-100 transition duration-150">
-                            <i data-lucide="log-out" class="w-6 h-6"></i>
-                        </button>
-                        <button id="delete-all-button" title="حذف كل البيانات (تحذير!)"
-                            class="p-2 rounded-full text-red-600 hover:bg-red-100 transition duration-150">
-                            <i data-lucide="database-zap" class="w-6 h-6"></i>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </header>
-
-        <main class="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-
-            <div id="data-error-message"></div>
-
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                <div class="bg-blue-50 p-4 rounded-lg shadow-sm flex flex-col items-center">
-                    <i data-lucide="package" class="w-6 h-6 text-blue-600 mb-1"></i>
-                    <p class="text-xs font-medium text-gray-500">إجمالي الوحدات</p>
-                    <p id="total-quantity" class="text-xl font-bold text-blue-700 mt-1">0</p>
-                </div>
-                <div class="bg-orange-50 p-4 rounded-lg shadow-sm flex flex-col items-center">
-                    <i data-lucide="banknote" class="w-6 h-6 text-orange-600 mb-1"></i>
-                    <p class="text-xs font-medium text-gray-500">إجمالي قيمة التكلفة</p>
-                    <p id="total-cost-value" class="text-xl font-bold text-orange-700 mt-1">0 ج.م</p>
-                </div>
-                <div class="bg-teal-50 p-4 rounded-lg shadow-sm flex flex-col items-center">
-                    <i data-lucide="wallet" class="w-6 h-6 text-teal-600 mb-1"></i>
-                    <p class="text-xs font-medium text-gray-500">إجمالي قيمة البيع (جمهور)</p>
-                    <p id="total-public-value" class="text-xl font-bold text-teal-700 mt-1">0 ج.م</p>
-                </div>
-                <div class="bg-green-50 p-4 rounded-lg shadow-sm flex flex-col items-center">
-                    <i data-lucide="trending-up" class="w-6 h-6 text-green-600 mb-1"></i>
-                    <p class="text-xs font-medium text-gray-500">إجمالي الربح المحتمل</p>
-                    <p id="total-potential-profit" class="text-xl font-bold text-green-700 mt-1">0 ج.م</p>
-                </div>
-            </div>
-
-            <div class="bg-white p-6 rounded-xl shadow-md mb-8">
-                <h3 class="text-lg font-bold text-gray-800 mb-4">البحث والتصفية</h3>
-                <div class="mb-4">
-                    <div class="relative">
-                        <div
-                            class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
-                            <i data-lucide="search" class="w-5 h-5"></i>
-                        </div>
-                        <input type="text" id="search-input" placeholder="ابحث بكود أو اسم أو فئة الصنف..."
-                            class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2.5 text-right focus:border-teal-500 focus:ring-teal-500 text-sm">
-                    </div>
-                </div>
-
-                <div class="flex flex-wrap gap-2" id="category-filters">
-                </div>
-            </div>
-
-            <div class="bg-white rounded-xl shadow-lg overflow-x-auto">
-                <div class="inline-block min-w-full align-middle">
-                    <table id="inventory-table" class="min-w-full divide-y divide-gray-200 responsive-table">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th scope="col" data-sort="code"
-                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition">
-                                    الكود
-                                </th>
-                                <th scope="col" data-sort="name"
-                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition">
-                                    اسم الصنف
-                                </th>
-                                <th scope="col" data-sort="quantity"
-                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition">
-                                    الكمية
-                                </th>
-                                <th scope="col" data-sort="costPrice"
-                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition">
-                                    سعر التكلفة
-                                </th>
-                                <th scope="col" data-sort="publicPrice"
-                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition">
-                                    سعر الجمهور
-                                </th>
-                                <th scope="col"
-                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    إجمالي التكلفة
-                                </th>
-                                <th scope="col"
-                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    إجمالي البيع
-                                </th>
-                                <th scope="col"
-                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    الربح المحتمل/الوحدة
-                                </th>
-                                <th scope="col"
-                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    الإجمالي المحتمل
-                                </th>
-                                <th scope="col" data-sort="expiryDate"
-                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition">
-                                    تاريخ الانتهاء
-                                </th>
-                                <th scope="col"
-                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    الحالة
-                                </th>
-                                <th scope="col"
-                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    الإجراءات
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody id="inventory-tbody" class="bg-white divide-y divide-gray-200">
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-        </main>
-    </div>
-    </body>
+</body>
 
 </html>

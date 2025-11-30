@@ -832,7 +832,7 @@
                         name: 'اسم المنتج الأساسي (مطلوب)', // الاسم الأساسي
                         fallbackName: 'اسم المنتج البديل (اختياري - سيستخدم إذا كان الأساسي فارغاً)', // الحقل الجديد
                         publicPrice: 'سعر الجمهور (مطلوب)',
-                        minQuantity: 'الحد الأدنى للكمية',
+                        minQuantity: 'الكمية',
                         category: 'الفئة'
                     };
                 case 'purchases':
@@ -885,7 +885,7 @@
                             </div>
                             
                             <div>
-                                <label for="fileInput" class="block text-sm font-medium text-gray-700 mb-1">تحميل ملف Excel (.xlsx, .xls, .csv)</label>
+                                <label for="fileInput" class="block text-sm font-medium text-gray-700 mb-1">تحميل ملف Excel (.xlsx, .csv)</label>
                                 <input type="file" id="fileInput" name="fileInput" accept=".xlsx, .xls, .csv" required multiple 
                                        class="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none p-2.5" />
                             </div>
@@ -1125,49 +1125,59 @@
                     defaultValue = autoMatch;
                 }
 
-                // لحقل fallbackName و itemNameEnglish نجعل القيمة الافتراضية التجاهل لكونه
+                // لحقل fallbackName و itemNameEnglish نجعل القيمة الافتراضية التجاهل لكونه اختياري (إذا لم تتم المطابقة التلقائية)
                 if (key === 'fallbackName' || key === 'itemNameEnglish') {
                     defaultValue = '--- تجاهل هذا الحقل ---';
                 }
 
-                const optionsHtml = headers.map(header =>
-                    `<option value="${header}" ${header === defaultValue ? 'selected' : ''}>${header}</option>`
-                ).join('');
-
                 return `
                     <div>
-                        <label for="map-${key}" class="block text-sm font-medium text-gray-700 mb-1">${label}</label>
-                        <select id="map-${key}" name="${key}" ${label.includes('(مطلوب)') ? 'required' : ''} class="block w-full rounded-md border-gray-300 py-2.5 pl-4 pr-8 text-sm focus:border-teal-500 focus:ring-teal-500">
+                        <label for="map_${key}" class="block text-sm font-medium text-gray-700 mb-1">${label}</label>
+                        <select id="map_${key}" name="${key}" required class="block w-full rounded-md border-gray-300 py-2.5 pl-4 pr-8 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                             ${ignoreOption}
-                            ${optionsHtml}
+                            ${headers.map(h =>
+                    `<option value="${h}" ${h === defaultValue ? 'selected' : ''}>${h}</option>`
+                ).join('')}
                         </select>
                     </div>
                 `;
             }).join('');
 
             container.innerHTML = mappingHtml;
+            if (typeof lucide !== 'undefined') { lucide.createIcons(); }
         };
-
 
         const handleImportSubmit = async (e) => {
             e.preventDefault();
-            const form = document.getElementById('import-mapping-form');
+            const form = e.target;
             const submitButton = document.getElementById('import-submit-button');
             const importType = importedData.type;
+            const headers = importedData.headers;
             const rows = importedData.rows;
 
-            // جمع حقول المطابقة
+            if (!userId) {
+                alert('النظام غير مصادق بعد. حاول مرة أخرى.');
+                return;
+            }
+
+            // إنشاء قاموس للمطابقة
             const mapping = {};
+            const requiredFields = getRequiredFields(importType);
             let isValidMapping = true;
 
-            Object.keys(getRequiredFields(importType)).forEach(key => {
-                const selectElement = form.querySelector(`#map-${key}`);
-                mapping[key] = selectElement.value;
+            Object.keys(requiredFields).forEach(key => {
+                const selectElement = form.querySelector(`[name="${key}"]`);
+                const selectedHeader = selectElement.value;
 
-                if (selectElement.required && mapping[key] === '--- تجاهل هذا الحقل ---') {
-                    alert(`الرجاء اختيار حقل لـ: ${getRequiredFields(importType)[key].split('(')[0].trim()}`);
+                // التحقق من الحقول المطلوبة (غير الاختيارية)
+                if (!requiredFields[key].includes('(اختياري') && selectedHeader === '--- تجاهل هذا الحقل ---') {
+                    alert(`الرجاء مطابقة الحقل المطلوب: ${requiredFields[key]}`);
                     isValidMapping = false;
                 }
+
+                // نجد فهرس العمود المقابل
+                const columnIndex = headers.indexOf(selectedHeader);
+                mapping[key] = columnIndex !== -1 ? columnIndex : selectedHeader; // استخدام الفهرس أو القيمة (للتجاهل)
             });
 
             if (!isValidMapping) return;
@@ -1189,7 +1199,9 @@
             const updatedCodes = new Set(); // لتتبع الأصناف التي تم تحديثها من الملف
 
             for (const row of rows) {
-                let itemCode; // يتم تحديد الكود بناءً على نوع الملف
+                let itemCode;
+
+                // يتم تحديد الكود بناءً على نوع الملف
                 if (importType === 'items') {
                     itemCode = String(row[mapping.code] || '').trim() || null;
                 } else {
@@ -1219,68 +1231,43 @@
                 // A. معالجة ملف الأصناف الأساسية (items)
                 // ----------------------------------------
                 if (importType === 'items') {
-                    const name = String(row[mapping.name] || '').trim() || null;
-                    const fallbackName = mapping.fallbackName === '--- تجاهل هذا الحقل ---'
-                        ? null
-                        : String(row[mapping.fallbackName] || '').trim() || null;
+                    const nameIndex = mapping.name;
+                    const publicPriceIndex = mapping.publicPrice;
+                    const minQtyIndex = mapping.minQuantity; // هذا هو عمود الكمية في ملفك
+                    const categoryIndex = mapping.category;
+                    const fallbackNameIndex = mapping.fallbackName;
 
-                    const finalName = name || fallbackName || updateData.name;
+                    const name = String(row[nameIndex] || '').trim() || String(row[fallbackNameIndex] || '').trim() || updateData.name;
+                    const publicPrice = cleanNumberValue(row[publicPriceIndex]);
 
-                    // يجب أن يكون الاسم موجوداً في النهاية
-                    if (!finalName || finalName === 'غير محدد') {
-                        console.warn(`تجاهل الصنف ${itemCode} بسبب عدم وجود اسم.`);
-                        continue;
-                    }
+                    // 💡 (1) قراءة قيمة الكمية من الملف وتحويلها إلى رقم
+                    const quantityFromFile = cleanNumberValue(row[minQtyIndex]) || 0;
 
-                    const publicPrice = cleanNumberValue(row[mapping.publicPrice]);
-                    const minQuantity = cleanNumberValue(row[mapping.minQuantity]);
-                    const category = mapping.category === '--- تجاهل هذا الحقل ---'
-                        ? updateData.category
-                        : String(row[mapping.category] || '').trim() || updateData.category;
+                    const category = String(row[categoryIndex] || '').trim() || updateData.category;
 
-                    updateData.name = finalName;
-                    updateData.publicPrice = publicPrice > 0 ? publicPrice : updateData.publicPrice;
-                    updateData.minQuantity = minQuantity > 0 ? minQuantity : updateData.minQuantity;
+                    updateData.name = name;
+                    updateData.publicPrice = publicPrice;
+
+                    // 🟢 (2) إضافة الكمية المأخوذة من الملف إلى الكمية الحالية للصنف
+                    updateData.quantity += quantityFromFile;
+
+                    // (3) نستخدم نفس القيمة لتحديث "الحد الأدنى للكمية" كما كان مقصوداً في الأصل
+                    // updateData.minQuantity = quantityFromFile;
+
                     updateData.category = category;
+
+                    // updateData.updatedAt = new Date().toISOString(); 
+                    // تم إزالة التعليق السابق الذي كان يمنع تغيير الكمية
                     updateData.updatedAt = new Date().toISOString();
-
-                    // لا يتم تحديث الكمية (quantity) في هذا النوع من الملفات
-                }
-
-                // ----------------------------------------
-                // B. معالجة ملف المشتريات (purchases)
-                // ----------------------------------------
-                else if (importType === 'purchases') {
+                } else if (importType === 'purchases') {
                     const qtyIndex = mapping.quantity;
                     const costIndex = mapping.costPrice;
-                    const priceIndex = mapping.publicPrice;
                     const expiryIndex = mapping.expiryDate;
 
                     const purchasedQuantity = cleanNumberValue(row[qtyIndex]);
                     const costPrice = cleanNumberValue(row[costIndex]);
-                    const publicPrice = cleanNumberValue(row[priceIndex]);
 
-                    // إذا كان الصنف غير موجود في المخزون الحالي (صنف جديد)
-                    if (!inventoryMap[itemCode]?.docId) {
-                        const transactionItemNameArabic = mapping.itemNameArabic === '--- تجاهل هذا الحقل ---' ? null : String(row[mapping.itemNameArabic] || '').trim() || null;
-                        const transactionItemNameEnglish = mapping.itemNameEnglish === '--- تجاهل هذا الحقل ---' ? null : String(row[mapping.itemNameEnglish] || '').trim() || null;
-                        const transactionItemName = transactionItemNameArabic || transactionItemNameEnglish;
-
-                        // تهيئة بيانات الصنف الجديد
-                        updateData.name = transactionItemName || `صنف جديد: ${itemCode}`;
-                        updateData.minQuantity = 0;
-                        updateData.category = 'غير مصنف';
-                    }
-
-                    // تحديث الأسعار: يتم اعتماد القيم الأحدث والأكبر من الصفر
-                    if (publicPrice > 0) {
-                        updateData.publicPrice = publicPrice;
-                    }
-                    if (costPrice > 0) {
-                        updateData.costPrice = costPrice;
-                    }
-
-                    // معالجة تاريخ الانتهاء
+                    // تحويل تاريخ الانتهاء
                     let expiryDate = null;
                     const expiryValue = row[expiryIndex];
 
@@ -1308,7 +1295,7 @@
 
                     // تجميع: الكمية تتراكم، أما التكلفة وتاريخ الانتهاء فيتم اعتماد القيمة الأخيرة في الملف
                     updateData.quantity += purchasedQuantity;
-                    // updateData.costPrice = costPrice; // الأسعار يتم تحديثها أعلاه
+                    updateData.costPrice = costPrice; // آخر سعر هو السائد
                     if (expiryDate) {
                         updateData.expiryDate = expiryDate; // آخر تاريخ هو السائد
                     }
@@ -1320,31 +1307,72 @@
                 } else if (importType === 'sales') {
                     const qtyIndex = mapping.quantity;
                     const priceIndex = mapping.publicPrice;
+
                     const soldQuantity = cleanNumberValue(row[qtyIndex]);
+                    const publicPrice = mapping.publicPrice === '--- تجاهل هذا الحقل ---' ?
+                        updateData.publicPrice : cleanNumberValue(row[priceIndex]);
 
-                    // إذا كان الصنف غير موجود في المخزون الحالي (صنف جديد)
-                    if (!inventoryMap[itemCode]?.docId) {
-                        const transactionItemNameArabic = mapping.itemNameArabic === '--- تجاهل هذا الحقل ---' ? null : String(row[mapping.itemNameArabic] || '').trim() || null;
-                        const transactionItemNameEnglish = mapping.itemNameEnglish === '--- تجاهل هذا الحقل ---' ? null : String(row[mapping.itemNameEnglish] || '').trim() || null;
-                        const transactionItemName = transactionItemNameArabic || transactionItemNameEnglish;
-
-                        // تهيئة بيانات الصنف الجديد
-                        updateData.name = transactionItemName || `صنف جديد: ${itemCode}`;
-                        updateData.minQuantity = 0;
-                        updateData.category = 'غير مصنف';
-                    }
-
-                    // تحديث السعر إذا كان موجوداً في ملف المبيعات
-                    if (mapping.publicPrice !== '--- تجاهل هذا الحقل ---') {
-                        const publicPrice = cleanNumberValue(row[priceIndex]);
-                        if (publicPrice > 0) {
-                            updateData.publicPrice = publicPrice;
-                        }
-                    }
-
-                    // خصم الكمية (لا يمكن أن تكون أقل من الصفر)
+                    // خصم الكمية
                     updateData.quantity = Math.max(0, updateData.quantity - soldQuantity);
+                    // تحديث سعر الجمهور (اختياري)
+                    updateData.publicPrice = publicPrice;
                     updateData.updatedAt = new Date().toISOString();
+                }
+
+                // ----------------------------------------------------
+                // ** منطق استخلاص الاسم من ملف الحركة (المشتريات/المبيعات) **
+                // ----------------------------------------------------
+                let transactionItemName = null;
+
+                if (importType === 'purchases' || importType === 'sales') {
+                    const arabicNameIndex = mapping.itemNameArabic;
+                    const englishNameIndex = mapping.itemNameEnglish;
+
+                    // استخلاص الاسم العربي
+                    const arabicName = (arabicNameIndex !== '--- تجاهل هذا الحقل ---' && arabicNameIndex !== undefined) ?
+                        String(row[arabicNameIndex] || '').trim() : '';
+
+                    // استخلاص الاسم الإنجليزي
+                    const englishName = (englishNameIndex !== '--- تجاهل هذا الحقل ---' && englishNameIndex !== undefined) ?
+                        String(row[englishNameIndex] || '').trim() : '';
+
+                    // الأولوية للاسم العربي، ثم الاسم الإنجليزي
+                    transactionItemName = arabicName || englishName;
+                }
+
+
+                // نتحقق إذا كان الصنف غير موجود في المخزون الحالي وتم إضافته من ملف مشتريات/مبيعات
+                if (!inventoryMap[itemCode] && (importType === 'purchases' || importType === 'sales')) {
+                    // إذا كان صنف حركة فقط، نضيف له الحد الأدنى = 0 والفئة = غير مصنف
+                    // ** نستخدم الاسم المستخلص من ملف الحركة (العربي ثم الإنجليزي) **
+                    updateData.name = transactionItemName || `صنف جديد: ${itemCode}`;
+                    updateData.minQuantity = 0;
+                    updateData.category = 'غير مصنف';
+                    updateData.publicPrice = updateData.publicPrice || 0;
+                    updateData.costPrice = updateData.costPrice || 0;
+                }
+                if (importType === 'purchases') {
+
+                    // يجب تحديد اسم الحقل في ملف الـ mapping بشكل صحيح
+                    const publicPriceIndex = mapping.publicPrice;
+                    const costIndex = mapping.costPrice || mapping.purchasePrice;
+
+                    // 1. قراءة القيم من الصف الحالي باستخدام مؤشرات الأعمدة
+                    const publicPrice = cleanNumberValue(row[publicPriceIndex]); // قراءة سعر البيع
+                    const costPrice = cleanNumberValue(row[costIndex]);          // قراءة سعر التكلفة
+
+                    // 2. تحديث الأسعار في بيانات الصنف (updateData)
+                    // نحدث فقط إذا كانت القيمة أكبر من الصفر
+                    if (publicPrice > 0) {
+                        updateData.publicPrice = publicPrice;
+                    }
+
+                    if (costPrice > 0) {
+                        updateData.costPrice = costPrice;
+                    }
+
+                    // 💡 ملاحظة: يجب أن يتبع هذا منطق تحديث الكمية وتاريخ الصلاحية هنا أيضًا
+                    // (لأنك في ملف المشتريات)
                 }
             }
 
@@ -1354,8 +1382,10 @@
             for (const itemCode of updatedCodes) {
                 const updateData = inventoryUpdates[itemCode];
                 const itemRef = updateData.docId ? doc(collectionRef, updateData.docId) : doc(collectionRef);
+
                 // حذف المفتاح غير المستخدم في الكتابة
                 delete updateData.docId;
+
                 batch.set(itemRef, {
                     code: itemCode,
                     ...updateData,

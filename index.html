@@ -6,10 +6,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>نظام إدارة المخزون الصيدلي</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
-    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
+
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js" defer></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap');
+        /* @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap'); */
 
         body {
             font-family: 'Cairo', sans-serif;
@@ -102,13 +107,14 @@
                 <button id="login-title" onclick="window.toggleForm('login')"
                     class="flex-1 py-3 text-center text-lg font-bold text-teal-700 border-b-2 border-teal-600 transition duration-150">تسجيل
                     الدخول</button>
-                
+
             </div>
 
             <div id="login-form-container">
                 <form id="login-form" onsubmit="window.handleLogin(event)" class="space-y-4">
                     <div>
-                        <label for="email" class="block text-sm font-medium text-gray-700 mb-1">البريد الإلكتروني</label>
+                        <label for="email" class="block text-sm font-medium text-gray-700 mb-1">البريد
+                            الإلكتروني</label>
                         <div class="relative rounded-md shadow-sm">
                             <div
                                 class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
@@ -143,7 +149,8 @@
             <div id="register-form-container" class="hidden">
                 <form id="register-form" onsubmit="window.handleRegister(event)" class="space-y-4">
                     <div>
-                        <label for="regEmail" class="block text-sm font-medium text-gray-700 mb-1">البريد الإلكتروني</label>
+                        <label for="regEmail" class="block text-sm font-medium text-gray-700 mb-1">البريد
+                            الإلكتروني</label>
                         <div class="relative rounded-md shadow-sm">
                             <div
                                 class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
@@ -155,14 +162,16 @@
                         </div>
                     </div>
                     <div>
-                        <label for="regPassword" class="block text-sm font-medium text-gray-700 mb-1">كلمة المرور (6 أحرف
+                        <label for="regPassword" class="block text-sm font-medium text-gray-700 mb-1">كلمة المرور (6
+                            أحرف
                             على الأقل)</label>
                         <div class="relative rounded-md shadow-sm">
                             <div
                                 class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
                                 <i data-lucide="key" class="w-5 h-5"></i>
                             </div>
-                            <input type="password" name="regPassword" id="regPassword" required placeholder="كلمة المرور"
+                            <input type="password" name="regPassword" id="regPassword" required
+                                placeholder="كلمة المرور"
                                 class="block w-full rounded-md border-gray-300 pr-10 pl-4 py-2 text-right focus:border-teal-500 focus:ring-teal-500 text-sm"
                                 dir="ltr">
                         </div>
@@ -181,8 +190,7 @@
 
     <div id="main-app" class="min-h-screen hidden">
         <header class="bg-white shadow-sm">
-            <div
-                class="max-w-screen-2xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center" dir="rtl">
+            <div class="max-w-screen-2xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center" dir="rtl">
                 <h1 class="text-3xl font-bold leading-tight text-gray-900 flex items-center">
                     <i data-lucide="box" class="w-7 h-7 ml-2 text-teal-600"></i>
                     إدارة المخزون
@@ -257,7 +265,7 @@
                     <label for="category-filter" class="sr-only">تصفية حسب الفئة</label>
                     <select id="category-filter"
                         class="block w-full rounded-md border-gray-300 py-2.5 pl-4 pr-8 text-sm focus:border-teal-500 focus:ring-teal-500">
-                        </select>
+                    </select>
                 </div>
                 <div class="w-full sm:w-1/4 flex justify-end space-x-3 space-x-reverse">
                     <button id="delete-all-button"
@@ -396,7 +404,7 @@
             // 🌟 المسار موحد الآن لكل المستخدمين ولا يعتمد على userId
             return collection(db, `artifacts/${appId}/shared_inventory`);
         };
-        
+
         // 🌟 دالة جديدة: جلب مرجع مجموعة تقارير الجرد
         const getAuditReportsCollectionRef = () => {
             const rawAppId = firebaseConfig.appId || 'default-inventory';
@@ -523,13 +531,13 @@
             document.body.insertAdjacentHTML('beforeend', modalHtml);
             if (typeof lucide !== 'undefined') { lucide.createIcons(); }
         };
-        
+
         // ----------------------------------------------------
         // 🌟 دالة مؤقتة لفتح نافذة عرض تقارير الجرد (الجديدة) 🌟
         // ----------------------------------------------------
         window.openViewAuditReportsModal = () => {
-    window.location.href = "audit-reports.html";
-};
+            window.location.href = "audit-reports.html";
+        };
 
 
         // ----------------------------------------------------
@@ -1671,7 +1679,7 @@
             `;
             openModal(modalHtml);
         };
-        
+
         // ----------------------------------------------------
         // 🌟 منطق حذف جميع بيانات تقارير الجرد (الجديد) 🌟
         // ----------------------------------------------------
@@ -1870,7 +1878,7 @@
             const startingBookQuantity = currentItemData.quantity;
             const expected = startingBookQuantity + purchased - sold;
             const variance = physical - expected;
-            
+
             // 🌟🌟🌟 التعديل المطلوب: حساب القيمة المالية للفرق باستخدام سعر البيع (publicPrice) 🌟🌟🌟
             const varianceFinancialValue = variance * currentItemData.publicPrice;
 
@@ -1913,7 +1921,7 @@
 
                 // 2. تسجيل تقرير الجرد المالي في مجموعة جديدة
                 const auditReportsCollection = getAuditReportsCollectionRef();
-                
+
                 // إضافة تقرير جديد
                 const newAuditDocRef = doc(auditReportsCollection);
                 batch.set(newAuditDocRef, { ...auditReportData, id: newAuditDocRef.id });
@@ -1922,7 +1930,7 @@
                 await batch.commit();
 
                 window.closeModal('audit-modal');
-                
+
                 // رسالة تأكيد تتضمن القيمة المالية الجديدة المحسوبة على سعر البيع
                 alert(`تم تحديث الكمية الفعلية بنجاح إلى ${formatNumber(physical)} وحدة. الفرق (العجز/الزيادة): ${formatNumber(variance.toFixed(2))} وحدة. القيمة المالية للفرق (بسعر البيع): ${formatNumber(varianceFinancialValue.toFixed(2))} ج.م.`);
             } catch (error) {
@@ -2112,7 +2120,7 @@
             document.getElementById('import-file-button').addEventListener('click', openImportModal);
             document.getElementById('logout-button').addEventListener('click', window.handleLogout);
             document.getElementById('delete-all-button').addEventListener('click', window.openDeleteAllConfirmModal);
-            
+
             // 🌟 ربط زر تقارير الجرد الجديد 🌟
             document.getElementById('audit-report-button').addEventListener('click', window.openAuditReportMenu);
         });

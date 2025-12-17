@@ -18,7 +18,7 @@
 
         body {
             font-family: 'Cairo', sans-serif;
-            background-color: #f3ff6;
+            background-color: #f3f4f6;
         }
 
         /* Style for the responsive table on small screens */
@@ -342,6 +342,8 @@
                         <tbody id="inventory-tbody" class="bg-white divide-y divide-gray-200">
                         </tbody>
                     </table>
+                    <div id="pagination-container" class="mt-6 flex justify-center items-center gap-2" dir="rtl">
+                    </div>
                 </div>
             </div>
 
@@ -386,6 +388,9 @@
         // --- Global State ---
         let inventory = [];
         let currentSort = { column: 'name', direction: 'asc' };
+        let currentPage = 1;
+        const itemsPerPage = 30; // عدد المنتجات في كل صفحة
+        const maxVisiblePages = 5; // عدد أرقام الصفحات التي تظهر معاً
         let currentFilter = { query: '', category: 'الكل' };
         let currentItem = null;
         let importedData = null; // لتخزين بيانات الملف مؤقتًا
@@ -417,6 +422,16 @@
 
         const formatNumber = (num) => new Intl.NumberFormat('ar-EG').format(num);
 
+        // دالة المساعدة لـ Debounce: تؤخر تنفيذ الدالة حتى يتوقف المستخدم عن التفاعل (الكتابة) لفترة محددة
+        function debounce(func, delay) {
+            let timeoutId;
+            return (...args) => {
+                clearTimeout(timeoutId);
+                timeoutId = setTimeout(() => {
+                    func.apply(this, args);
+                }, delay);
+            };
+        }
         // --------------------------------------------------
         // ** دالة cleanNumberValue لمعالجة الأرقام العشرية (الفاصلة أو النقطة) **
         // --------------------------------------------------
@@ -795,23 +810,20 @@
         // --- Core Logic (لم تتغير) ---
 
         const filterInventory = (items) => {
-            const { query: search, category } = currentFilter;
+            return items.filter(item => {
+                // فلترة بالبحث (اسم الصنف أو الكود)
+                const searchTerm = (currentFilter.search || "").toLowerCase();
+                const matchesSearch =
+                    item.name.toLowerCase().includes(searchTerm) ||
+                    (item.code && item.code.toLowerCase().includes(searchTerm));
 
-            let filtered = items;
+                // فلترة بالفئة (Category)
+                const matchesCategory =
+                    currentFilter.category === 'الكل' ||
+                    item.category === currentFilter.category;
 
-            if (category !== 'الكل') {
-                filtered = filtered.filter(item => item.category === category);
-            }
-
-            if (search) {
-                const lowerSearch = search.toLowerCase();
-                filtered = filtered.filter(item =>
-                    item.name.toLowerCase().includes(lowerSearch) ||
-                    item.category.toLowerCase().includes(lowerSearch) ||
-                    item.code?.toLowerCase().includes(lowerSearch)
-                );
-            }
-            return filtered;
+                return matchesSearch && matchesCategory;
+            });
         };
 
         const filterAndSort = () => {
@@ -2077,23 +2089,83 @@
                 // قد يتم استدعاء هذه الدالة قبل onAuthStateChanged، لذلك نخرج
                 return;
             }
+
             const filteredItems = filterInventory(inventory);
+
+            // 1. حساب نطاق البيانات للصفحة الحالية (Slice)
+            const startIndex = (currentPage - 1) * itemsPerPage;
+            const endIndex = startIndex + itemsPerPage;
+            const paginatedItems = filteredItems.slice(startIndex, endIndex);
+
             const tbody = document.getElementById('inventory-tbody');
-            const itemsToRender = filteredItems.map(item => renderInventoryRow(item)).join('');
+            if (!tbody) return;
 
-            tbody.innerHTML = itemsToRender || `
-                <tr>
-                    <td colspan="12" class="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
-                        لا توجد أصناف تطابق معايير البحث أو التصفية.
-                    </td>
-                </tr>
-            `;
+            // 2. تحويل العناصر المفلترة فقط (paginatedItems) إلى HTML
+            // استخدمنا renderInventoryRow كما في الكود الخاص بك ولكن على شريحة الصفحة فقط
+            const itemsToRender = paginatedItems.map(item => renderInventoryRow(item)).join('');
 
+            // 3. تحديث الجدول
+            if (paginatedItems.length > 0) {
+                tbody.innerHTML = itemsToRender;
+            } else {
+                tbody.innerHTML = `
+            <tr>
+                <td colspan="14" class="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
+                    لا توجد أصناف تطابق معايير البحث أو التصفية.
+                </td>
+            </tr>
+        `;
+            }
+
+            // 4. تحديث الحسابات بناءً على كل العناصر المفلترة (filteredItems) وليس الصفحة فقط
             calculateTotals(filteredItems);
             renderCategoryFilter();
 
-            // إعادة إنشاء أيقونات lucide بعد تحديث المحتوى
-            if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+            // 5. رسم أزرار الصفحات (تأكد من وجود الدالة التي شرحناها سابقاً)
+            renderPagination(filteredItems.length);
+
+            // إعادة إنشاء أيقونات lucide
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        };
+
+        const renderPagination = (totalItems) => {
+            const totalPages = Math.ceil(totalItems / itemsPerPage);
+            const container = document.getElementById('pagination-container');
+            if (!container) return;
+            container.innerHTML = '';
+
+            if (totalPages <= 1) return;
+
+            // زر السابق
+            const prevBtn = document.createElement('button');
+            prevBtn.innerHTML = 'السابق';
+            prevBtn.className = `px-3 py-1 rounded border ${currentPage === 1 ? 'bg-gray-100 text-gray-400' : 'bg-white text-teal-600'}`;
+            prevBtn.disabled = currentPage === 1;
+            prevBtn.onclick = () => { currentPage--; renderApp(); };
+            container.appendChild(prevBtn);
+
+            // حساب نطاق الـ 5 صفحات
+            let startPage = Math.max(1, currentPage - 2);
+            let endPage = Math.min(totalPages, startPage + 4);
+            if (endPage - startPage < 4) startPage = Math.max(1, endPage - 4);
+
+            for (let i = startPage; i <= endPage; i++) {
+                const pageBtn = document.createElement('button');
+                pageBtn.innerText = i;
+                pageBtn.className = `w-8 h-8 rounded border ${i === currentPage ? 'bg-teal-600 text-white' : 'bg-white text-teal-600'}`;
+                pageBtn.onclick = () => { currentPage = i; renderApp(); };
+                container.appendChild(pageBtn);
+            }
+
+            // زر التالي
+            const nextBtn = document.createElement('button');
+            nextBtn.innerHTML = 'التالي';
+            nextBtn.className = `px-3 py-1 rounded border ${currentPage === totalPages ? 'bg-gray-100 text-gray-400' : 'bg-white text-teal-600'}`;
+            nextBtn.disabled = currentPage === totalPages;
+            nextBtn.onclick = () => { currentPage++; renderApp(); };
+            container.appendChild(nextBtn);
         };
 
         // --- Event Listeners ---
@@ -2101,16 +2173,46 @@
             authenticateAndStart();
 
             // ربط أحداث الفلاتر والبحث
-            document.getElementById('search-input').addEventListener('input', (e) => {
-                currentFilter.query = e.target.value;
+            // ===============================================
+            // ✅ الكود الجديد لاستخدام Debounce في البحث
+            // ===============================================
+
+            // 1. تعريف الدالة الفعلية للبحث والفلترة
+            const performSearch = (searchValue) => {
+                currentFilter.search = searchValue;
                 currentFilter.category = 'الكل'; // إزالة تصفية الفئة عند البحث
+
+                // 🌟 السطر المطلوب إضافته هنا 🌟
+                currentPage = 1;
+
                 renderApp();
+            };
+
+            // 2. تطبيق Debounce عليها
+            const debouncedSearch = debounce(performSearch, 300);
+
+            // 3. ربط أحداث حقل البحث
+            document.getElementById('search-input').addEventListener('input', (e) => {
+                const value = e.target.value;
+                // إذا كان الحقل فارغاً، نصفر البحث فوراً
+                if (!value) {
+                    currentFilter.search = "";
+                    currentPage = 1;
+                    renderApp();
+                } else {
+                    debouncedSearch(value);
+                }
             });
 
+            // ===============================================
             // ربط أحداث فرز الجدول
             document.querySelectorAll('#inventory-table th[data-sort]').forEach(header => {
                 header.addEventListener('click', (e) => {
                     const column = e.currentTarget.dataset.sort;
+
+                    // 🌟 نصيحة: عند تغيير الترتيب (Sort) يفضل أيضاً تصفير الصفحة
+                    currentPage = 1;
+
                     handleSortChange(column);
                 });
             });
